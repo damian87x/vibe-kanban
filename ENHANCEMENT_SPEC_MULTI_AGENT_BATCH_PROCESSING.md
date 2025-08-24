@@ -358,6 +358,491 @@ impl ClaudeCodeExecutor {
    - Performance metrics collection
    - Debug and troubleshooting tools
 
+## Behavior-Driven Development (BDD) Integration
+
+### BDD Framework Architecture
+
+#### Core BDD Components
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct BddScenario {
+    pub feature: String,
+    pub scenario: String,
+    pub given: Vec<GivenStep>,
+    pub when: Vec<WhenStep>,
+    pub then: Vec<ThenStep>,
+    pub examples: Option<ScenarioExamples>,
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct BddTestSuite {
+    pub id: Uuid,
+    pub project_id: Uuid,
+    pub feature_files: Vec<FeatureFile>,
+    pub step_definitions: HashMap<String, StepDefinition>,
+    pub execution_strategy: BddExecutionStrategy,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub enum BddExecutionStrategy {
+    Sequential,
+    Parallel { max_threads: usize },
+    AgentDriven { agent_type: AgentType },
+}
+```
+
+#### BDD Database Schema
+```sql
+CREATE TABLE bdd_features (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    feature_name TEXT NOT NULL,
+    description TEXT,
+    scenarios TEXT NOT NULL, -- JSON array of scenarios
+    tags TEXT, -- JSON array
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    last_run DATETIME,
+    last_run_status TEXT CHECK (last_run_status IN ('passed', 'failed', 'partial'))
+);
+
+CREATE TABLE bdd_test_runs (
+    id TEXT PRIMARY KEY,
+    feature_id TEXT NOT NULL REFERENCES bdd_features(id),
+    task_attempt_id TEXT REFERENCES task_attempts(id),
+    scenario_results TEXT NOT NULL, -- JSON results
+    coverage_report TEXT, -- JSON coverage data
+    execution_time_ms INTEGER,
+    agent_id TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+#### BDD Agent Integration
+```rust
+impl BddTestAgent {
+    pub async fn generate_scenarios_from_requirements(
+        &self,
+        requirements: &str,
+        context: &ProjectContext,
+    ) -> Result<Vec<BddScenario>, BddError> {
+        // Use AI to generate BDD scenarios from requirements
+        // Analyze existing code for test context
+        // Generate comprehensive Given/When/Then steps
+    }
+    
+    pub async fn implement_step_definitions(
+        &self,
+        scenarios: &[BddScenario],
+        language: ProgrammingLanguage,
+    ) -> Result<StepDefinitions, BddError> {
+        // Generate step definition code
+        // Create test fixtures and mocks
+        // Implement assertions and validations
+    }
+    
+    pub async fn execute_bdd_tests(
+        &self,
+        suite: &BddTestSuite,
+        environment: &EnvironmentContext,
+    ) -> Result<BddTestResults, BddError> {
+        // Setup test environment
+        // Execute scenarios in order
+        // Collect and report results
+        // Generate coverage reports
+    }
+}
+```
+
+### BDD Workflow Integration
+
+#### Feature Development with BDD
+```json
+{
+    "workflow_name": "bdd_driven_development",
+    "stages": [
+        {
+            "name": "scenario_generation",
+            "agent_type": "Documentation",
+            "action": "generate_bdd_scenarios",
+            "input": {
+                "source": "requirements/*.md",
+                "output": "features/*.feature"
+            }
+        },
+        {
+            "name": "step_implementation",
+            "agent_type": "Development",
+            "action": "implement_step_definitions",
+            "input": {
+                "features": "features/*.feature",
+                "output": "tests/steps/*.{js,rs,py}"
+            }
+        },
+        {
+            "name": "feature_implementation",
+            "agent_type": "Development",
+            "action": "implement_feature",
+            "success_criteria": {
+                "type": "bdd_tests_pass",
+                "features": "features/*.feature"
+            }
+        },
+        {
+            "name": "bdd_validation",
+            "agent_type": "QualityAssurance",
+            "action": "validate_bdd_coverage",
+            "success_criteria": {
+                "type": "scenario_coverage",
+                "minimum": 100
+            }
+        }
+    ]
+}
+```
+
+### Example BDD Feature File
+```gherkin
+Feature: Multi-Agent Task Coordination
+  As a developer
+  I want to coordinate multiple AI agents on complex tasks
+  So that I can leverage specialized expertise efficiently
+
+  Background:
+    Given a Vibe Kanban project with multi-agent support enabled
+    And the following agents are registered:
+      | agent_id | type | specialization |
+      | dev_001  | Development | Backend API |
+      | qa_001   | QualityAssurance | Integration Testing |
+      | doc_001  | Documentation | Technical Writing |
+
+  @critical @multi-agent
+  Scenario: Parallel execution of independent tasks
+    Given 3 independent tasks in the backlog
+    When I trigger batch execution with parallel strategy
+    Then each task should be assigned to a different agent
+    And all tasks should execute simultaneously
+    And each task should have its own isolated worktree
+    
+  @integration @claude-code
+  Scenario: Claude Code sub-agent specialization
+    Given a complex full-stack feature requirement
+    When I create a multi-stage workflow
+    Then the system should spawn specialized Claude Code instances:
+      | stage | claude_mode | context |
+      | design | architect | System design and API contracts |
+      | backend | development | API implementation |
+      | frontend | development | UI implementation |
+      | testing | qa | Test coverage and validation |
+    And each instance should have appropriate tool restrictions
+```
+
+## Design Prompt System
+
+### Design-First Development Architecture
+
+#### Design Prompt Components
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct DesignPrompt {
+    pub id: Uuid,
+    pub project_id: Uuid,
+    pub prompt_type: DesignPromptType,
+    pub context: DesignContext,
+    pub constraints: Vec<DesignConstraint>,
+    pub examples: Vec<DesignExample>,
+    pub output_format: OutputFormat,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub enum DesignPromptType {
+    SystemArchitecture,
+    ApiDesign,
+    DatabaseSchema,
+    UserInterface,
+    WorkflowDesign,
+    TestStrategy,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct DesignContext {
+    pub business_requirements: String,
+    pub technical_constraints: Vec<String>,
+    pub existing_patterns: Vec<PathBuf>,
+    pub reference_implementations: Vec<ReferenceLink>,
+    pub design_principles: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+pub struct DesignConstraint {
+    pub constraint_type: ConstraintType,
+    pub description: String,
+    pub validation_rule: Option<String>,
+}
+```
+
+#### Design Prompt Database Schema
+```sql
+CREATE TABLE design_prompts (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id),
+    prompt_type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    context TEXT NOT NULL, -- JSON
+    constraints TEXT, -- JSON array
+    examples TEXT, -- JSON array
+    output_format TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME
+);
+
+CREATE TABLE design_artifacts (
+    id TEXT PRIMARY KEY,
+    prompt_id TEXT NOT NULL REFERENCES design_prompts(id),
+    artifact_type TEXT NOT NULL,
+    content TEXT NOT NULL,
+    metadata TEXT, -- JSON
+    agent_id TEXT,
+    iteration INTEGER DEFAULT 1,
+    approved BOOLEAN DEFAULT FALSE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE design_reviews (
+    id TEXT PRIMARY KEY,
+    artifact_id TEXT NOT NULL REFERENCES design_artifacts(id),
+    reviewer_agent_id TEXT,
+    review_type TEXT CHECK (review_type IN ('automated', 'agent', 'human')),
+    feedback TEXT NOT NULL,
+    suggestions TEXT, -- JSON array
+    approval_status TEXT CHECK (approval_status IN ('approved', 'needs_revision', 'rejected')),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### Design Prompt Templates
+
+#### System Architecture Design Template
+```yaml
+type: SystemArchitecture
+title: "Design multi-agent coordination system"
+context:
+  business_requirements: |
+    - Support parallel execution of 10+ agents
+    - Enable real-time progress monitoring
+    - Provide failure recovery mechanisms
+    - Scale to 1000+ tasks per day
+  
+  technical_constraints:
+    - Must integrate with existing MCP server
+    - Maintain backward compatibility
+    - Use Rust for backend services
+    - Support SQLite and PostgreSQL
+  
+  design_principles:
+    - Separation of concerns
+    - Fault tolerance
+    - Observable and debuggable
+    - Performance over features
+    
+constraints:
+  - type: performance
+    description: "API response time < 200ms for 95th percentile"
+    validation_rule: "benchmark_test"
+  
+  - type: scalability
+    description: "Support 100 concurrent agent sessions"
+    validation_rule: "load_test"
+
+output_format:
+  sections:
+    - component_diagram
+    - sequence_diagrams
+    - api_specifications
+    - data_models
+    - deployment_architecture
+
+examples:
+  - reference: "https://github.com/example/microservices-pattern"
+    relevance: "Event-driven architecture pattern"
+```
+
+#### API Design Template
+```yaml
+type: ApiDesign
+title: "Design RESTful API for batch operations"
+context:
+  requirements: |
+    Design a RESTful API for batch ticket processing that:
+    - Supports CRUD operations on batches
+    - Enables real-time status monitoring
+    - Provides filtering and pagination
+    - Includes webhook notifications
+
+output_format:
+  specification: OpenAPI 3.0
+  sections:
+    - endpoints
+    - request_schemas
+    - response_schemas
+    - error_handling
+    - authentication
+    - rate_limiting
+
+constraints:
+  - type: rest_compliance
+    description: "Follow REST best practices and RFC standards"
+  
+  - type: versioning
+    description: "Support API versioning through headers"
+
+examples:
+  - endpoint: "POST /api/v1/batches"
+    request:
+      tickets: [...]
+      strategy: "parallel"
+    response:
+      batch_id: "uuid"
+      status: "processing"
+```
+
+### Design-Driven Agent Workflow
+
+#### Design Generation Agent
+```rust
+impl DesignAgent {
+    pub async fn generate_design_from_prompt(
+        &self,
+        prompt: &DesignPrompt,
+        iteration: usize,
+    ) -> Result<DesignArtifact, DesignError> {
+        // Analyze prompt and context
+        // Research similar patterns
+        // Generate design artifact
+        // Validate against constraints
+    }
+    
+    pub async fn refine_design_from_feedback(
+        &self,
+        artifact: &DesignArtifact,
+        feedback: &DesignReview,
+    ) -> Result<DesignArtifact, DesignError> {
+        // Parse feedback and suggestions
+        // Update design accordingly
+        // Re-validate constraints
+        // Generate new iteration
+    }
+    
+    pub async fn validate_implementation_against_design(
+        &self,
+        design: &DesignArtifact,
+        implementation_path: &Path,
+    ) -> Result<ValidationReport, DesignError> {
+        // Compare implementation with design
+        // Check design compliance
+        // Generate deviation report
+        // Suggest corrections
+    }
+}
+```
+
+#### Design Review Workflow
+```rust
+#[derive(Debug, Clone)]
+pub struct DesignReviewWorkflow {
+    pub design_agent: Arc<DesignAgent>,
+    pub review_agents: Vec<Arc<dyn ReviewAgent>>,
+    pub approval_threshold: f32,
+}
+
+impl DesignReviewWorkflow {
+    pub async fn execute(
+        &self,
+        prompt: DesignPrompt,
+        max_iterations: usize,
+    ) -> Result<ApprovedDesign, WorkflowError> {
+        let mut current_design = self.design_agent
+            .generate_design_from_prompt(&prompt, 1)
+            .await?;
+        
+        for iteration in 1..=max_iterations {
+            // Collect reviews from all agents
+            let reviews = self.collect_reviews(&current_design).await?;
+            
+            // Check approval threshold
+            if self.meets_approval_threshold(&reviews) {
+                return Ok(ApprovedDesign {
+                    artifact: current_design,
+                    reviews,
+                    iterations: iteration,
+                });
+            }
+            
+            // Refine based on feedback
+            let consolidated_feedback = self.consolidate_feedback(&reviews);
+            current_design = self.design_agent
+                .refine_design_from_feedback(&current_design, &consolidated_feedback)
+                .await?;
+        }
+        
+        Err(WorkflowError::MaxIterationsReached)
+    }
+}
+```
+
+### Design Prompt CLI Integration
+
+#### Claude Code Design Mode
+```bash
+# Initialize design session
+npx claude-code --mode design \
+  --prompt "Design a real-time collaboration system" \
+  --context requirements.md \
+  --constraints performance.yaml
+
+# Review and iterate on design
+npx claude-code --mode design-review \
+  --artifact design_v1.md \
+  --feedback "Consider event sourcing for state management"
+
+# Validate implementation against design
+npx claude-code --mode design-validate \
+  --design approved_design.md \
+  --implementation ./src
+```
+
+#### Design Prompt MCP Tools
+```rust
+#[tool(description = "Create design prompt for architectural decisions")]
+async fn create_design_prompt(
+    &self,
+    Parameters(CreateDesignPromptRequest {
+        prompt_type,
+        context,
+        constraints,
+        examples,
+    }): Parameters<CreateDesignPromptRequest>,
+) -> Result<CallToolResult, ErrorData>
+
+#[tool(description = "Generate design artifact from prompt")]
+async fn generate_design(
+    &self,
+    Parameters(GenerateDesignRequest {
+        prompt_id,
+        agent_preferences,
+    }): Parameters<GenerateDesignRequest>,
+) -> Result<CallToolResult, ErrorData>
+
+#[tool(description = "Review and provide feedback on design")]
+async fn review_design(
+    &self,
+    Parameters(ReviewDesignRequest {
+        artifact_id,
+        review_criteria,
+    }): Parameters<ReviewDesignRequest>,
+) -> Result<CallToolResult, ErrorData>
+```
+
 ## Technical Specifications
 
 ### API Endpoints
