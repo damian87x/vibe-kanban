@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Project Overview
+**Vibe Kanban** is a sophisticated task orchestration platform for AI coding agents. It provides a central control plane for managing, executing, and reviewing tasks performed by Claude Code, Gemini CLI, and other AI assistants.
+
 ## Essential Commands
 
 ### Development
@@ -14,7 +17,7 @@ npm run frontend:dev    # Frontend only (port 3000)
 npm run backend:dev     # Backend only (port auto-assigned)
 
 # Build production version
-./build-npm-package.sh
+./local-build.sh
 ```
 
 ### Testing & Validation

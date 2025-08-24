@@ -1,0 +1,26 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "/execute-tasks",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "./.claude/hooks/pre-execute-tasks.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "/execute-tasks",
+        "hooks": [
+          {
+            "type": "command", 
+            "command": "./.claude/hooks/post-execute-tasks.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
