@@ -25,16 +25,23 @@ This directory contains the comprehensive specification suite for enhancing Vibe
    - Security and performance considerations
 
 3. **[IMPLEMENTATION_TASKS.md](./IMPLEMENTATION_TASKS.md)**
-   - Complete task breakdown (147 tasks)
+   - Complete task breakdown (158 tasks - updated with browser isolation)
    - Phase-by-phase implementation guide
    - Dependencies and validation criteria
    - File locations and acceptance criteria
 
 4. **[INTEGRATION_VALIDATION_CHECKLIST.md](./INTEGRATION_VALIDATION_CHECKLIST.md)**
-   - 89-point integration validation checklist
+   - 104-point integration validation checklist (enhanced with browser isolation)
    - Cross-system validation matrix
    - Test scenarios and monitoring requirements
    - Sign-off criteria
+
+5. **[BROWSER_ISOLATED_ENVIRONMENT_SPEC.md](./BROWSER_ISOLATED_ENVIRONMENT_SPEC.md)** 🆕
+   - Browser-based isolated environment architecture
+   - WebContainer/Sandpack integration
+   - Frontend preview with live reload
+   - Isolated backend instances per task/agent
+   - Enhanced real-time streaming with environment context
 
 ### 📁 Archive
 

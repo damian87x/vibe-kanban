@@ -640,6 +640,62 @@ This document provides a comprehensive breakdown of all implementation tasks req
   - **Validation:** Shows agent activity
   - **Dependencies:** Agent status API
 
+#### 5.2.3 Browser-Based Isolated Environments
+- [ ] **Task:** Implement WebContainer/Sandpack integration
+  - **File:** `frontend/src/services/WebContainerManager.ts`
+  - **Validation:** Containers boot in browser
+  - **Dependencies:** WebContainer SDK or Sandpack
+
+- [ ] **Task:** Create IsolatedPreview component
+  - **File:** `frontend/src/components/preview/IsolatedPreview.tsx`
+  - **Validation:** Preview renders in iframe
+  - **Dependencies:** WebContainer manager
+
+- [ ] **Task:** Implement EnvironmentManager UI
+  - **File:** `frontend/src/components/environments/EnvironmentManager.tsx`
+  - **Validation:** List and manage environments
+  - **Dependencies:** Environment API
+
+- [ ] **Task:** Create PreviewSynchronizer service
+  - **File:** `frontend/src/services/PreviewSynchronizer.ts`
+  - **Validation:** File sync and HMR work
+  - **Dependencies:** WebSocket connection
+
+- [ ] **Task:** Implement environment connection manager
+  - **File:** `frontend/src/services/EnvironmentConnectionManager.ts`
+  - **Validation:** Multi-channel messaging works
+  - **Dependencies:** WebSocket/SSE
+
+- [ ] **Task:** Create console output viewer
+  - **File:** `frontend/src/components/preview/ConsoleViewer.tsx`
+  - **Validation:** Logs stream to UI
+  - **Dependencies:** Environment channels
+
+- [ ] **Task:** Implement network monitor for preview
+  - **File:** `frontend/src/components/preview/NetworkMonitor.tsx`
+  - **Validation:** Shows API calls from preview
+  - **Dependencies:** Proxy intercept
+
+- [ ] **Task:** Create file editor with Monaco
+  - **File:** `frontend/src/components/editor/MonacoEditor.tsx`
+  - **Validation:** Edit files in browser
+  - **Dependencies:** Monaco editor
+
+- [ ] **Task:** Implement isolated backend manager (Rust)
+  - **File:** `crates/services/src/isolation/backend_manager.rs`
+  - **Validation:** Spawns isolated instances
+  - **Dependencies:** Docker/Process isolation
+
+- [ ] **Task:** Create dynamic proxy router (Rust)
+  - **File:** `crates/services/src/isolation/proxy_manager.rs`
+  - **Validation:** Routes to correct backend
+  - **Dependencies:** Axum proxy middleware
+
+- [ ] **Task:** Implement environment resource manager
+  - **File:** `frontend/src/services/EnvironmentResourceManager.ts`
+  - **Validation:** Enforces limits and cleanup
+  - **Dependencies:** Environment tracking
+
 ### 5.3 Documentation & Deployment (Priority: Medium)
 
 #### 5.3.1 Documentation

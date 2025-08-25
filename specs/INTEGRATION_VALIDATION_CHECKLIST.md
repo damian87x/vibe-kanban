@@ -141,13 +141,22 @@
 - [ ] Error responses follow standard format
 - [ ] Pagination works for list endpoints
 
-### 6.2 Real-time Updates
-- [ ] SSE connections established
-- [ ] Batch progress updates stream
-- [ ] Agent status updates stream
-- [ ] Workflow progress updates stream
+### 6.2 Real-time Updates & Browser Isolation
+- [ ] SSE connections established for each environment
+- [ ] Batch progress updates stream to correct environment
+- [ ] Agent status updates stream with environment context
+- [ ] Workflow progress updates stream per isolation
 - [ ] No memory leaks in long connections
-- [ ] Reconnection logic works
+- [ ] Reconnection logic works with environment awareness
+- [ ] WebContainer/Sandpack integration functional
+- [ ] Isolated backend instances provisioned
+- [ ] Preview iframe sandbox security enforced
+- [ ] Hot module replacement works in browser
+- [ ] File synchronization between agent and preview
+- [ ] Console output streams to browser
+- [ ] Network requests proxied correctly
+- [ ] Resource limits enforced per environment
+- [ ] Environment cleanup on disconnect
 
 ### 6.3 Frontend Component Integration
 - [ ] All new components render correctly
