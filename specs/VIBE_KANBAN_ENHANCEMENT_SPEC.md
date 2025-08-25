@@ -91,9 +91,44 @@ This specification defines a comprehensive enhancement to Vibe Kanban that trans
 - Can generate and execute test scenarios
 - Reports coverage and quality metrics
 
-### Epic 3: Environment Management
+### Epic 3: Browser-Based Preview Environments
 
-#### Story 3.1: Parallel Environments
+#### Story 3.1: Zero-Setup Browser Preview
+**As a** developer  
+**I want to** preview changes directly in my browser  
+**So that** I don't need local environment setup
+
+**Acceptance Criteria:**
+- Browser-based environment boots in < 5 seconds
+- Live preview with hot module replacement
+- Console output streams to browser
+- No local dependencies required
+
+#### Story 3.2: Isolated Backend Instances
+**As a** developer  
+**I want to** have isolated backend for each preview  
+**So that** my changes don't affect others
+
+**Acceptance Criteria:**
+- Each preview gets its own backend instance
+- Isolated database per environment
+- Dynamic proxy routing to correct backend
+- Automatic cleanup on disconnect
+
+#### Story 3.3: Interactive Development
+**As a** developer  
+**I want to** edit code and see changes instantly  
+**So that** I can iterate quickly
+
+**Acceptance Criteria:**
+- Monaco editor integrated in browser
+- File changes sync immediately
+- HMR updates preview without refresh
+- Network requests visible in monitor
+
+### Epic 4: Environment Management
+
+#### Story 4.1: Parallel Environments
 **As a** developer  
 **I want to** test multiple features simultaneously  
 **So that** we don't block each other
@@ -104,7 +139,7 @@ This specification defines a comprehensive enhancement to Vibe Kanban that trans
 - Mock services configuration
 - Automatic cleanup after completion
 
-#### Story 3.2: Resource Management
+#### Story 4.2: Resource Management
 **As a** system administrator  
 **I want to** control resource usage  
 **So that** the system remains stable
@@ -115,7 +150,7 @@ This specification defines a comprehensive enhancement to Vibe Kanban that trans
 - Automatic throttling when limits reached
 - Queue management for excess tasks
 
-### Epic 4: Workflow Customization
+### Epic 5: Workflow Customization
 
 #### Story 4.1: Workflow Configuration
 **As a** project owner  
@@ -139,7 +174,7 @@ This specification defines a comprehensive enhancement to Vibe Kanban that trans
 - Coordinate multi-agent sessions
 - Share context between agents
 
-### Epic 5: BDD Integration
+### Epic 6: BDD Integration
 
 #### Story 5.1: Scenario Generation
 **As a** product owner  
@@ -163,7 +198,7 @@ This specification defines a comprehensive enhancement to Vibe Kanban that trans
 - Real-time test status updates
 - Coverage reports generated
 
-### Epic 6: Design-First Development
+### Epic 7: Design-First Development
 
 #### Story 6.1: Design Prompt Creation
 **As an** architect  
@@ -504,7 +539,40 @@ paths:
 - API documentation
 - Updated UI
 
-### Phase 3: Multi-Agent System (Week 5-6)
+### Phase 3: Browser-Based Isolated Environments (Week 5-6)
+
+#### Objectives
+- Implement browser-based preview environments
+- Create isolated backend instances
+- Enable real-time preview with HMR
+- Add WebContainer/Sandpack integration
+
+#### Tasks
+1. **Browser Environment Setup**
+   - [ ] Integrate WebContainer or Sandpack
+   - [ ] Implement IsolatedPreview component
+   - [ ] Create EnvironmentManager UI
+   - [ ] Add Monaco editor integration
+
+2. **Backend Isolation**
+   - [ ] Implement IsolatedBackendManager
+   - [ ] Create dynamic proxy routing
+   - [ ] Setup isolated database provisioning
+   - [ ] Add resource limits per environment
+
+3. **Real-Time Synchronization**
+   - [ ] Enhance SSE/WebSocket for environments
+   - [ ] Implement preview state synchronization
+   - [ ] Add console streaming to browser
+   - [ ] Create network request monitoring
+
+#### Deliverables
+- Browser-based preview environments
+- Isolated backend instances
+- Live reload and HMR working
+- Resource management system
+
+### Phase 4: Multi-Agent System (Week 7-8)
 
 #### Objectives
 - Implement specialized agents
@@ -533,7 +601,7 @@ paths:
 - Agent coordination demos
 - Claude Code integration
 
-### Phase 4: BDD & Design Systems (Week 7-8)
+### Phase 5: BDD & Design Systems (Week 9-10)
 
 #### Objectives
 - Integrate BDD framework
@@ -561,7 +629,7 @@ paths:
 - Design prompt system
 - Validation reports
 
-### Phase 5: Testing & Optimization (Week 9)
+### Phase 6: Testing & Optimization (Week 11)
 
 #### Objectives
 - Comprehensive testing
@@ -597,6 +665,9 @@ paths:
 |--------|----------|--------|-------------|
 | Batch Processing Time | 100% | 50% | Time to process 10 tickets |
 | Parallel Utilization | 0% | 80% | Active environments / available |
+| Browser Preview Boot Time | N/A | <5s | Time to interactive preview |
+| Environment Isolation | 0% | 100% | Zero cross-env interference |
+| HMR Update Speed | N/A | <500ms | Time from save to preview update |
 | Code Quality | 70% | 90% | Sonar/coverage metrics |
 | Manual Interventions | 100% | 30% | Human touches per feature |
 | Test Coverage | 60% | 95% | BDD scenario coverage |

@@ -86,19 +86,26 @@ This directory contains the comprehensive specification suite for enhancing Vibe
 - API endpoints and UI
 - **26 tasks** to complete
 
-### Phase 3: Multi-Agent System (Weeks 5-6)
+### Phase 3: Browser-Based Isolated Environments (Weeks 5-6)
+- WebContainer/Sandpack integration
+- Isolated backend instances
+- Live preview with HMR
+- Environment management UI
+- **11 tasks** to complete
+
+### Phase 4: Multi-Agent System (Weeks 7-8)
 - Workflow engine
 - Agent coordination
 - Claude Code integration
 - **24 tasks** to complete
 
-### Phase 4: BDD & Design Systems (Weeks 7-8)
+### Phase 5: BDD & Design Systems (Weeks 9-10)
 - BDD framework integration
 - Design prompt system
 - Review workflows
 - **22 tasks** to complete
 
-### Phase 5: Testing & Optimization (Week 9)
+### Phase 6: Testing & Optimization (Week 11)
 - Comprehensive testing
 - Performance optimization
 - Documentation completion
@@ -110,6 +117,12 @@ This directory contains the comprehensive specification suite for enhancing Vibe
 - Process multiple tickets simultaneously
 - Three strategies: Sequential, Parallel, Dependency-aware
 - 50% reduction in processing time target
+
+### 🌐 Browser-Based Isolated Environments
+- **Zero-setup preview**: Run full environments in browser
+- **Isolated backends**: Each task gets its own backend instance
+- **Live reload**: Instant updates with HMR
+- **Interactive development**: Monaco editor with file sync
 
 ### 🤖 Multi-Agent Architecture
 - **6 Agent Types**: Development, QA, Documentation, Design, BDD, Review
