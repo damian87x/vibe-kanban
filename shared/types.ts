@@ -44,9 +44,13 @@ export type Task = { id: string, project_id: string, title: string, description:
 
 export type TaskWithAttemptStatus = { id: string, project_id: string, title: string, description: string | null, status: TaskStatus, parent_task_attempt: string | null, created_at: string, updated_at: string, has_in_progress_attempt: boolean, has_merged_attempt: boolean, last_attempt_failed: boolean, profile: string, };
 
-export type CreateTask = { project_id: string, title: string, description: string | null, parent_task_attempt: string | null, };
+export type CreateTask = { project_id: string, title: string, description: string | null, parent_task_attempt: string | null, image_ids: Array<string> | null, };
 
-export type UpdateTask = { title: string | null, description: string | null, status: TaskStatus | null, parent_task_attempt: string | null, };
+export type UpdateTask = { title: string | null, description: string | null, status: TaskStatus | null, parent_task_attempt: string | null, image_ids: Array<string> | null, };
+
+export type Image = { id: string, file_path: string, original_name: string, mime_type: string | null, size_bytes: bigint, hash: string, created_at: string, updated_at: string, };
+
+export type CreateImage = { file_path: string, original_name: string, mime_type: string | null, size_bytes: bigint, hash: string, };
 
 export type ApiResponse<T, E = T> = { success: boolean, data: T | null, error_data: E | null, message: string | null, };
 
@@ -60,9 +64,11 @@ export type UpdateMcpServersBody = { servers: { [key in string]?: JsonValue }, }
 
 export type GetMcpServerResponse = { mcp_config: McpConfig, config_path: string, };
 
-export type CreateFollowUpAttempt = { prompt: string, variant: string | null, };
+export type CreateFollowUpAttempt = { prompt: string, variant: string | null, image_ids: Array<string> | null, };
 
 export type CreateGitHubPrRequest = { title: string, body: string | null, base_branch: string | null, };
+
+export type ImageResponse = { id: string, file_path: string, original_name: string, mime_type: string | null, size_bytes: bigint, hash: string, created_at: string, updated_at: string, };
 
 export enum GitHubServiceError { TOKEN_INVALID = "TOKEN_INVALID", INSUFFICIENT_PERMISSIONS = "INSUFFICIENT_PERMISSIONS", REPO_NOT_FOUND_OR_NO_ACCESS = "REPO_NOT_FOUND_OR_NO_ACCESS" }
 
@@ -74,7 +80,7 @@ export enum ThemeMode { LIGHT = "LIGHT", DARK = "DARK", SYSTEM = "SYSTEM", PURPL
 
 export type EditorConfig = { editor_type: EditorType, custom_command: string | null, };
 
-export enum EditorType { VS_CODE = "VS_CODE", CURSOR = "CURSOR", WINDSURF = "WINDSURF", INTELLI_J = "INTELLI_J", ZED = "ZED", CUSTOM = "CUSTOM" }
+export enum EditorType { VS_CODE = "VS_CODE", CURSOR = "CURSOR", WINDSURF = "WINDSURF", INTELLI_J = "INTELLI_J", ZED = "ZED", XCODE = "XCODE", CUSTOM = "CUSTOM" }
 
 export type GitHubConfig = { pat: string | null, oauth_token: string | null, username: string | null, primary_email: string | null, default_pr_base: string | null, };
 
@@ -88,9 +94,9 @@ export enum CheckTokenResponse { VALID = "VALID", INVALID = "INVALID" }
 
 export type GitBranch = { name: string, is_current: boolean, is_remote: boolean, last_commit_date: Date, };
 
-export type BranchStatus = { commits_behind: number | null, commits_ahead: number | null, up_to_date: boolean | null, merged: boolean, has_uncommitted_changes: boolean, base_branch_name: string, remote_commits_behind: number | null, remote_commits_ahead: number | null, remote_up_to_date: boolean | null, };
+export type Diff = { change: DiffChangeKind, oldPath: string | null, newPath: string | null, oldContent: string | null, newContent: string | null, };
 
-export type Diff = { oldFile: FileDiffDetails | null, newFile: FileDiffDetails | null, hunks: Array<string>, };
+export type DiffChangeKind = "added" | "deleted" | "modified" | "renamed" | "copied" | "permissionChange";
 
 export type FileDiffDetails = { fileName: string | null, content: string | null, };
 
@@ -134,17 +140,17 @@ mcp_config_path: string | null, } & ({ "CLAUDE_CODE": ClaudeCode } | { "AMP": Am
 
 export type ProfileConfigs = { profiles: Array<ProfileConfig>, };
 
-export type ClaudeCode = { command: CommandBuilder, plan: boolean, };
+export type ClaudeCode = { command: CommandBuilder, append_prompt: string | null, plan: boolean, };
 
-export type Gemini = { command: CommandBuilder, };
+export type Gemini = { command: CommandBuilder, append_prompt: string | null, };
 
-export type Amp = { command: CommandBuilder, };
+export type Amp = { command: CommandBuilder, append_prompt: string | null, };
 
-export type Codex = { command: CommandBuilder, };
+export type Codex = { command: CommandBuilder, append_prompt: string | null, };
 
-export type Cursor = { command: CommandBuilder, };
+export type Cursor = { command: CommandBuilder, append_prompt: string | null, };
 
-export type Opencode = { command: CommandBuilder, };
+export type Opencode = { command: CommandBuilder, append_prompt: string | null, };
 
 export type CodingAgentInitialRequest = { prompt: string, profile_variant_label: ProfileVariantLabel, };
 
@@ -154,13 +160,25 @@ export type CreateTaskAttemptBody = { task_id: string, profile_variant_label: Pr
 
 export type RebaseTaskAttemptRequest = { new_base_branch: string | null, };
 
-export type TaskAttempt = { id: string, task_id: string, container_ref: string | null, branch: string | null, base_branch: string, merge_commit: string | null, profile: string, pr_url: string | null, pr_number: bigint | null, pr_status: string | null, pr_merged_at: string | null, worktree_deleted: boolean, setup_completed_at: string | null, created_at: string, updated_at: string, };
+export type BranchStatus = { commits_behind: number | null, commits_ahead: number | null, has_uncommitted_changes: boolean | null, base_branch_name: string, remote_commits_behind: number | null, remote_commits_ahead: number | null, merges: Array<Merge>, };
+
+export type TaskAttempt = { id: string, task_id: string, container_ref: string | null, branch: string | null, base_branch: string, profile: string, worktree_deleted: boolean, setup_completed_at: string | null, created_at: string, updated_at: string, };
 
 export type ExecutionProcess = { id: string, task_attempt_id: string, run_reason: ExecutionProcessRunReason, executor_action: ExecutorAction, status: ExecutionProcessStatus, exit_code: bigint | null, started_at: string, completed_at: string | null, created_at: string, updated_at: string, };
 
 export type ExecutionProcessStatus = "running" | "completed" | "failed" | "killed";
 
 export type ExecutionProcessRunReason = "setupscript" | "cleanupscript" | "codingagent" | "devserver";
+
+export type Merge = { "type": "direct" } & DirectMerge | { "type": "pr" } & PrMerge;
+
+export type DirectMerge = { id: string, task_attempt_id: string, merge_commit: string, target_branch_name: string, created_at: string, };
+
+export type PrMerge = { id: string, task_attempt_id: string, created_at: string, target_branch_name: string, pr_info: PullRequestInfo, };
+
+export type MergeStatus = "open" | "merged" | "closed" | "unknown";
+
+export type PullRequestInfo = { number: bigint, url: string, status: MergeStatus, merged_at: string | null, merge_commit_sha: string | null, };
 
 export type EventPatch = { op: string, path: string, value: EventPatchInner, };
 

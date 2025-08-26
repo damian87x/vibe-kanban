@@ -13,7 +13,7 @@ use db::models::project::{
 };
 use deployment::Deployment;
 use ignore::WalkBuilder;
-use services::services::git::GitBranch;
+use services::services::{file_ranker::FileRanker, git::GitBranch};
 use utils::response::ApiResponse;
 use uuid::Uuid;
 
@@ -293,11 +293,14 @@ async fn search_files_in_repo(
     let mut results = Vec::new();
     let query_lower = query.to_lowercase();
 
-    // Use ignore::WalkBuilder to respect gitignore files
+    // We intentionally do NOT respect gitignore here because this search is
+    // used to help users pick files like ".env" or local config files that are
+    // commonly gitignored but still need to be copied into the worktree.
+    // Include hidden files as well.
     let walker = WalkBuilder::new(repo_path)
-        .git_ignore(true)
-        .git_global(true)
-        .git_exclude(true)
+        .git_ignore(false)
+        .git_global(false)
+        .git_exclude(false)
         .hidden(false)
         .build();
 
@@ -355,18 +358,32 @@ async fn search_files_in_repo(
         }
     }
 
-    // Sort results by priority: FileName > DirectoryName > FullPath
-    results.sort_by(|a, b| {
-        let priority = |match_type: &SearchMatchType| match match_type {
-            SearchMatchType::FileName => 0,
-            SearchMatchType::DirectoryName => 1,
-            SearchMatchType::FullPath => 2,
-        };
+    // Apply git history-based ranking
+    let file_ranker = FileRanker::new();
+    match file_ranker.get_stats(repo_path).await {
+        Ok(stats) => {
+            // Re-rank results using git history
+            file_ranker.rerank(&mut results, &stats);
+        }
+        Err(e) => {
+            tracing::warn!(
+                "Failed to get git stats for ranking, using basic sort: {}",
+                e
+            );
+            // Fallback to basic priority sorting
+            results.sort_by(|a, b| {
+                let priority = |match_type: &SearchMatchType| match match_type {
+                    SearchMatchType::FileName => 0,
+                    SearchMatchType::DirectoryName => 1,
+                    SearchMatchType::FullPath => 2,
+                };
 
-        priority(&a.match_type)
-            .cmp(&priority(&b.match_type))
-            .then_with(|| a.path.cmp(&b.path))
-    });
+                priority(&a.match_type)
+                    .cmp(&priority(&b.match_type))
+                    .then_with(|| a.path.cmp(&b.path))
+            });
+        }
+    }
 
     // Limit to top 10 results
     results.truncate(10);

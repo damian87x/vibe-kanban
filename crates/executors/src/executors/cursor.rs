@@ -31,6 +31,7 @@ use crate::{
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct Cursor {
     pub command: CommandBuilder,
+    pub append_prompt: Option<String>,
 }
 
 #[async_trait]
@@ -42,6 +43,8 @@ impl StandardCodingAgentExecutor for Cursor {
     ) -> Result<AsyncGroupChild, ExecutorError> {
         let (shell_cmd, shell_arg) = get_shell_command();
         let agent_cmd = self.command.build_initial();
+
+        let combined_prompt = utils::text::combine_prompt(&self.append_prompt, prompt);
 
         let mut command = Command::new(shell_cmd);
         command
@@ -56,7 +59,7 @@ impl StandardCodingAgentExecutor for Cursor {
         let mut child = command.group_spawn()?;
 
         if let Some(mut stdin) = child.inner().stdin.take() {
-            stdin.write_all(prompt.as_bytes()).await?;
+            stdin.write_all(combined_prompt.as_bytes()).await?;
             stdin.shutdown().await?;
         }
 
@@ -74,6 +77,8 @@ impl StandardCodingAgentExecutor for Cursor {
             .command
             .build_follow_up(&["--resume".to_string(), session_id.to_string()]);
 
+        let combined_prompt = utils::text::combine_prompt(&self.append_prompt, prompt);
+
         let mut command = Command::new(shell_cmd);
         command
             .kill_on_drop(true)
@@ -87,7 +92,7 @@ impl StandardCodingAgentExecutor for Cursor {
         let mut child = command.group_spawn()?;
 
         if let Some(mut stdin) = child.inner().stdin.take() {
-            stdin.write_all(prompt.as_bytes()).await?;
+            stdin.write_all(combined_prompt.as_bytes()).await?;
             stdin.shutdown().await?;
         }
 
@@ -95,7 +100,7 @@ impl StandardCodingAgentExecutor for Cursor {
     }
 
     fn normalize_logs(&self, msg_store: Arc<MsgStore>, worktree_path: &PathBuf) {
-        let entry_index_provider = EntryIndexProvider::new();
+        let entry_index_provider = EntryIndexProvider::start_from(&msg_store);
 
         // Process Cursor stdout JSONL with typed serde models
         let current_dir = worktree_path.clone();
@@ -111,7 +116,7 @@ impl StandardCodingAgentExecutor for Cursor {
                     metadata: None,
                 }))
                 .time_gap(Duration::from_secs(2)) // Break messages if they are 2 seconds apart
-                .index_provider(EntryIndexProvider::new())
+                .index_provider(entry_index_provider.clone())
                 .build();
 
             // Assistant streaming coalescer state
@@ -178,19 +183,7 @@ impl StandardCodingAgentExecutor for Cursor {
                         }
                     }
 
-                    CursorJson::User { message, .. } => {
-                        if let Some(text) = message.concat_text() {
-                            let entry = NormalizedEntry {
-                                timestamp: None,
-                                entry_type: NormalizedEntryType::UserMessage,
-                                content: text,
-                                metadata: None,
-                            };
-                            let id = entry_index_provider.next();
-                            msg_store
-                                .push_patch(ConversationPatch::add_normalized_entry(id, entry));
-                        }
-                    }
+                    CursorJson::User { .. } => {}
 
                     CursorJson::Assistant { message, .. } => {
                         if let Some(chunk) = message.concat_text() {
@@ -782,6 +775,7 @@ mod tests {
         // Avoid relying on feature flag in tests; construct with a dummy command
         let executor = Cursor {
             command: CommandBuilder::new(""),
+            append_prompt: None,
         };
         let msg_store = Arc::new(MsgStore::new());
         let current_dir = std::path::PathBuf::from("/tmp/test-worktree");

@@ -12,6 +12,7 @@ import type { ExecutionProcessStatus, ExecutionProcess } from 'shared/types';
 import { useLogStream } from '@/hooks/useLogStream';
 import { useProcessConversation } from '@/hooks/useProcessConversation';
 import DisplayConversationEntry from '@/components/NormalizedConversation/DisplayConversationEntry';
+import RawLogText from '@/components/common/RawLogText';
 
 interface ProcessCardProps {
   process: ExecutionProcess;
@@ -22,11 +23,7 @@ function ProcessCard({ process }: ProcessCardProps) {
   const isCodingAgent = process.run_reason === 'codingagent';
 
   // Use appropriate hook based on process type
-  const {
-    logs,
-    isConnected: rawConnected,
-    error: rawError,
-  } = useLogStream(process.id, showLogs && !isCodingAgent);
+  const { logs, error: rawError } = useLogStream(process.id);
   const {
     entries,
     isConnected: normalizedConnected,
@@ -34,7 +31,7 @@ function ProcessCard({ process }: ProcessCardProps) {
   } = useProcessConversation(process.id, showLogs && isCodingAgent);
 
   const logEndRef = useRef<HTMLDivElement>(null);
-  const isConnected = isCodingAgent ? normalizedConnected : rawConnected;
+  const isConnected = isCodingAgent ? normalizedConnected : false;
   const error = isCodingAgent ? normalizedError : rawError;
 
   const getStatusIcon = (status: ExecutionProcessStatus) => {
@@ -163,7 +160,7 @@ function ProcessCard({ process }: ProcessCardProps) {
                     <DisplayConversationEntry
                       key={entry.timestamp ?? index}
                       entry={entry}
-                      index={index}
+                      expansionKey={`${process.id}:${index}`}
                       diffDeletable={false}
                     />
                   ))
@@ -176,10 +173,13 @@ function ProcessCard({ process }: ProcessCardProps) {
                 {logs.length === 0 ? (
                   <div className="text-gray-400">No logs available...</div>
                 ) : (
-                  logs.map((log, index) => (
-                    <div key={index} className="break-all">
-                      {log}
-                    </div>
+                  logs.map((logEntry, index) => (
+                    <RawLogText
+                      key={index}
+                      content={logEntry.content}
+                      channel={logEntry.type === 'STDERR' ? 'stderr' : 'stdout'}
+                      as="div"
+                    />
                   ))
                 )}
                 <div ref={logEndRef} />
