@@ -6,6 +6,7 @@ import {
   BookOpen,
   Server,
   MessageCircleQuestion,
+  Workflow,
 } from 'lucide-react';
 import { Logo } from '@/components/logo';
 
@@ -41,6 +42,18 @@ export function Navbar() {
                 <Link to="/mcp-servers">
                   <Server className="mr-2 h-4 w-4" />
                   MCP Servers
+                </Link>
+              </Button>
+              <Button
+                asChild
+                variant={
+                  location.pathname === '/orchestrator' ? 'default' : 'ghost'
+                }
+                size="sm"
+              >
+                <Link to="/orchestrator">
+                  <Workflow className="mr-2 h-4 w-4" />
+                  Orchestrator
                 </Link>
               </Button>
               <Button
