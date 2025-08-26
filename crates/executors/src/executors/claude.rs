@@ -28,6 +28,7 @@ use crate::{
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct ClaudeCode {
     pub command: CommandBuilder,
+    pub append_prompt: Option<String>,
     pub plan: bool,
 }
 
@@ -46,6 +47,8 @@ impl StandardCodingAgentExecutor for ClaudeCode {
             self.command.build_initial()
         };
 
+        let combined_prompt = utils::text::combine_prompt(&self.append_prompt, prompt);
+
         let mut command = Command::new(shell_cmd);
         command
             .kill_on_drop(true)
@@ -60,7 +63,7 @@ impl StandardCodingAgentExecutor for ClaudeCode {
 
         // Feed the prompt in, then close the pipe so Claude sees EOF
         if let Some(mut stdin) = child.inner().stdin.take() {
-            stdin.write_all(prompt.as_bytes()).await?;
+            stdin.write_all(combined_prompt.as_bytes()).await?;
             stdin.shutdown().await?;
         }
 
@@ -85,6 +88,8 @@ impl StandardCodingAgentExecutor for ClaudeCode {
                 .build_follow_up(&["--resume".to_string(), session_id.to_string()])
         };
 
+        let combined_prompt = utils::text::combine_prompt(&self.append_prompt, prompt);
+
         let mut command = Command::new(shell_cmd);
         command
             .kill_on_drop(true)
@@ -99,7 +104,7 @@ impl StandardCodingAgentExecutor for ClaudeCode {
 
         // Feed the followup prompt in, then close the pipe
         if let Some(mut stdin) = child.inner().stdin.take() {
-            stdin.write_all(prompt.as_bytes()).await?;
+            stdin.write_all(combined_prompt.as_bytes()).await?;
             stdin.shutdown().await?;
         }
 
@@ -107,7 +112,7 @@ impl StandardCodingAgentExecutor for ClaudeCode {
     }
 
     fn normalize_logs(&self, msg_store: Arc<MsgStore>, current_dir: &PathBuf) {
-        let entry_index_provider = EntryIndexProvider::new();
+        let entry_index_provider = EntryIndexProvider::start_from(&msg_store);
 
         // Process stdout logs (Claude's JSON output)
         ClaudeLogProcessor::process_logs(
@@ -324,16 +329,8 @@ impl ClaudeLogProcessor {
                 }
                 entries
             }
-            ClaudeJson::User { message, .. } => {
-                let mut entries = Vec::new();
-                for content_item in &message.content {
-                    if let Some(entry) =
-                        Self::content_item_to_normalized_entry(content_item, "user", worktree_path)
-                    {
-                        entries.push(entry);
-                    }
-                }
-                entries
+            ClaudeJson::User { .. } => {
+                vec![]
             }
             ClaudeJson::ToolUse { tool_data, .. } => {
                 let tool_name = tool_data.get_name();
@@ -381,7 +378,6 @@ impl ClaudeLogProcessor {
         match content_item {
             ClaudeContentItem::Text { text } => {
                 let entry_type = match role {
-                    "user" => NormalizedEntryType::UserMessage,
                     "assistant" => NormalizedEntryType::AssistantMessage,
                     _ => return None,
                 };
@@ -934,6 +930,7 @@ mod tests {
         let executor = ClaudeCode {
             command: CommandBuilder::new(""),
             plan: false,
+            append_prompt: None,
         };
         let msg_store = Arc::new(MsgStore::new());
         let current_dir = std::path::PathBuf::from("/tmp/test-worktree");

@@ -7,7 +7,7 @@ use std::{
     },
 };
 
-use anyhow::Error as AnyhowError;
+use anyhow::{Error as AnyhowError, anyhow};
 use async_trait::async_trait;
 use axum::response::sse::Event;
 use db::{
@@ -30,7 +30,7 @@ use executors::{
         script::{ScriptContext, ScriptRequest, ScriptRequestLanguage},
     },
     executors::{CodingAgent, ExecutorError, StandardCodingAgentExecutor},
-    logs::utils::patch::ConversationPatch,
+    logs::{NormalizedEntry, NormalizedEntryType, utils::patch::ConversationPatch},
     profile::ProfileVariantLabel,
 };
 use futures::{StreamExt, TryStreamExt, future};
@@ -42,6 +42,7 @@ use uuid::Uuid;
 
 use crate::services::{
     git::{GitService, GitServiceError},
+    image::ImageService,
     worktree_manager::WorktreeError,
 };
 pub type ContainerRef = String;
@@ -109,6 +110,7 @@ pub trait ContainerService {
         &self,
         task_attempt: &TaskAttempt,
     ) -> Result<ContainerRef, ContainerError>;
+    async fn is_container_clean(&self, task_attempt: &TaskAttempt) -> Result<bool, ContainerError>;
 
     async fn start_execution_inner(
         &self,
@@ -122,7 +124,7 @@ pub trait ContainerService {
         execution_process: &ExecutionProcess,
     ) -> Result<(), ContainerError>;
 
-    async fn try_commit_changes(&self, ctx: &ExecutionContext) -> Result<(), ContainerError>;
+    async fn try_commit_changes(&self, ctx: &ExecutionContext) -> Result<bool, ContainerError>;
 
     async fn copy_project_files(
         &self,
@@ -295,6 +297,14 @@ pub trait ContainerService {
                 }
             };
 
+            if let Err(err) = self.ensure_container_exists(&task_attempt).await {
+                tracing::warn!(
+                    "Failed to recreate worktree before log normalization for task attempt {}: {}",
+                    task_attempt.id,
+                    err
+                );
+            }
+
             let current_dir = self.task_attempt_to_current_dir(&task_attempt);
 
             let executor_action = if let Ok(executor_action) = process.executor_action() {
@@ -313,6 +323,11 @@ pub trait ContainerService {
                     if let Ok(executor) =
                         CodingAgent::from_profile_variant_label(&request.profile_variant_label)
                     {
+                        // Inject the initial user prompt before normalization (DB fallback path)
+                        let user_entry = create_user_message(request.prompt.clone());
+                        temp_store
+                            .push_patch(ConversationPatch::add_normalized_entry(0, user_entry));
+
                         executor.normalize_logs(temp_store.clone(), &current_dir);
                     } else {
                         tracing::error!(
@@ -325,6 +340,11 @@ pub trait ContainerService {
                     if let Ok(executor) =
                         CodingAgent::from_profile_variant_label(&request.profile_variant_label)
                     {
+                        // Inject the follow-up user prompt before normalization (DB fallback path)
+                        let user_entry = create_user_message(request.prompt.clone());
+                        temp_store
+                            .push_patch(ConversationPatch::add_normalized_entry(0, user_entry));
+
                         executor.normalize_logs(temp_store.clone(), &current_dir);
                     } else {
                         tracing::error!(
@@ -453,6 +473,15 @@ pub trait ContainerService {
             .await?
             .ok_or(SqlxError::RowNotFound)?;
 
+        // TODO: this implementation will not work in cloud
+        let worktree_path = PathBuf::from(
+            task_attempt
+                .container_ref
+                .as_ref()
+                .ok_or_else(|| ContainerError::Other(anyhow!("Container ref not found")))?,
+        );
+        let prompt = ImageService::canonicalise_image_paths(&task.to_prompt(), &worktree_path);
+
         let cleanup_action = project.cleanup_script.map(|script| {
             Box::new(ExecutorAction::new(
                 ExecutorActionType::ScriptRequest(ScriptRequest {
@@ -475,7 +504,7 @@ pub trait ContainerService {
                 // once the setup script is done, run the initial coding agent request
                 Some(Box::new(ExecutorAction::new(
                     ExecutorActionType::CodingAgentInitialRequest(CodingAgentInitialRequest {
-                        prompt: task.to_prompt(),
+                        prompt,
                         profile_variant_label,
                     }),
                     cleanup_action,
@@ -491,7 +520,7 @@ pub trait ContainerService {
         } else {
             let executor_action = ExecutorAction::new(
                 ExecutorActionType::CodingAgentInitialRequest(CodingAgentInitialRequest {
-                    prompt: task.to_prompt(),
+                    prompt,
                     profile_variant_label,
                 }),
                 cleanup_action,
@@ -570,6 +599,11 @@ pub trait ContainerService {
                     if let Ok(executor) =
                         CodingAgent::from_profile_variant_label(&request.profile_variant_label)
                     {
+                        // Prepend the initial user prompt as a normalized entry
+                        let user_entry = create_user_message(request.prompt.clone());
+                        msg_store
+                            .push_patch(ConversationPatch::add_normalized_entry(0, user_entry));
+
                         executor.normalize_logs(
                             msg_store,
                             &self.task_attempt_to_current_dir(task_attempt),
@@ -587,6 +621,11 @@ pub trait ContainerService {
                     if let Ok(executor) =
                         CodingAgent::from_profile_variant_label(&request.profile_variant_label)
                     {
+                        // Prepend the follow-up user prompt as a normalized entry
+                        let user_entry = create_user_message(request.prompt.clone());
+                        msg_store
+                            .push_patch(ConversationPatch::add_normalized_entry(0, user_entry));
+
                         executor.normalize_logs(
                             msg_store,
                             &self.task_attempt_to_current_dir(task_attempt),
@@ -640,5 +679,14 @@ pub trait ContainerService {
 
         tracing::debug!("Started next action: {:?}", next_action);
         Ok(())
+    }
+}
+
+fn create_user_message(prompt: String) -> NormalizedEntry {
+    NormalizedEntry {
+        timestamp: None,
+        entry_type: NormalizedEntryType::UserMessage,
+        content: prompt,
+        metadata: None,
     }
 }

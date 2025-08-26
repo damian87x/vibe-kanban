@@ -1,15 +1,19 @@
-use std::path::Path;
+use std::{collections::HashMap, path::Path};
 
 use chrono::{DateTime, Utc};
 use git2::{
     BranchType, CherrypickOptions, Delta, DiffFindOptions, DiffOptions, Error as GitError,
-    FetchOptions, Repository, Status, StatusOptions, build::CheckoutBuilder,
+    FetchOptions, Repository, Sort, build::CheckoutBuilder,
 };
 use regex;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use thiserror::Error;
 use ts_rs::TS;
-use utils::diff::{Diff, FileDiffDetails};
+use utils::diff::{Diff, DiffChangeKind, FileDiffDetails};
+
+// Import for file ranking functionality
+use super::file_ranker::FileStat;
+use crate::services::github_service::GitHubRepoInfo;
 
 #[derive(Debug, Error)]
 pub enum GitServiceError {
@@ -25,8 +29,8 @@ pub enum GitServiceError {
     MergeConflicts(String),
     #[error("Invalid path: {0}")]
     InvalidPath(String),
-    #[error("Worktree has uncommitted changes: {0}")]
-    WorktreeDirty(String),
+    #[error("{0} has uncommitted changes: {1}")]
+    WorktreeDirty(String, String),
     #[error("Invalid file paths: {0}")]
     InvalidFilePaths(String),
     #[error("No GitHub token available.")]
@@ -46,17 +50,10 @@ pub struct GitBranch {
     pub last_commit_date: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
-pub struct BranchStatus {
-    pub commits_behind: Option<usize>,
-    pub commits_ahead: Option<usize>,
-    pub up_to_date: Option<bool>,
-    pub merged: bool,
-    pub has_uncommitted_changes: bool,
-    pub base_branch_name: String,
-    pub remote_commits_behind: Option<usize>,
-    pub remote_commits_ahead: Option<usize>,
-    pub remote_up_to_date: Option<bool>,
+#[derive(Debug, Clone)]
+pub struct HeadInfo {
+    pub branch: String,
+    pub oid: String,
 }
 
 /// Target for diff generation
@@ -162,7 +159,7 @@ impl GitService {
         Ok(())
     }
 
-    pub fn commit(&self, path: &Path, message: &str) -> Result<(), GitServiceError> {
+    pub fn commit(&self, path: &Path, message: &str) -> Result<bool, GitServiceError> {
         let repo = Repository::open(path)?;
 
         // Check if there are any changes to commit
@@ -180,7 +177,7 @@ impl GitService {
 
         if !has_changes {
             tracing::debug!("No changes to commit!");
-            return Ok(());
+            return Ok(false);
         }
 
         // Get the current HEAD commit
@@ -205,7 +202,7 @@ impl GitService {
             &[&parent_commit],
         )?;
 
-        Ok(())
+        Ok(true)
     }
 
     /// Get diffs between branches or worktree changes
@@ -373,10 +370,41 @@ impl GitService {
                         .map(|p| self.create_file_details(p, &delta.new_file().id(), repo))
                 };
 
+                let mut change = match status {
+                    Delta::Added => DiffChangeKind::Added,
+                    Delta::Deleted => DiffChangeKind::Deleted,
+                    Delta::Modified => DiffChangeKind::Modified,
+                    Delta::Renamed => DiffChangeKind::Renamed,
+                    Delta::Copied => DiffChangeKind::Copied,
+                    Delta::Untracked => DiffChangeKind::Added,
+                    _ => DiffChangeKind::Modified,
+                };
+
+                let old_path = old_file.as_ref().and_then(|f| f.file_name.clone());
+                let new_path = new_file.as_ref().and_then(|f| f.file_name.clone());
+                let old_content = old_file.and_then(|f| f.content);
+                let new_content = new_file.and_then(|f| f.content);
+
+                // Detect pure mode changes (e.g., chmod +/-x) and classify as PermissionChange
+                if matches!(status, Delta::Modified)
+                    && delta.old_file().mode() != delta.new_file().mode()
+                {
+                    // If content unchanged or unavailable, prefer PermissionChange label
+                    if old_content
+                        .as_ref()
+                        .zip(new_content.as_ref())
+                        .is_none_or(|(o, n)| o == n)
+                    {
+                        change = DiffChangeKind::PermissionChange;
+                    }
+                }
+
                 file_diffs.push(Diff {
-                    old_file,
-                    new_file,
-                    hunks: vec![], // still empty
+                    change,
+                    old_path,
+                    new_path,
+                    old_content,
+                    new_content,
                 });
 
                 true
@@ -391,10 +419,9 @@ impl GitService {
 
     /// Extract file path from a Diff (for indexing and ConversationPatch)
     pub fn diff_path(diff: &Diff) -> String {
-        diff.new_file
-            .as_ref()
-            .and_then(|f| f.file_name.clone())
-            .or_else(|| diff.old_file.as_ref().and_then(|f| f.file_name.clone()))
+        diff.new_path
+            .clone()
+            .or_else(|| diff.old_path.clone())
             .unwrap_or_default()
     }
 
@@ -492,10 +519,12 @@ impl GitService {
         commit_message: &str,
     ) -> Result<String, GitServiceError> {
         // Open the worktree repository
-        let worktree_repo = Repository::open(worktree_path)?;
+        let worktree_repo = self.open_repo(worktree_path)?;
+        let main_repo = self.open_repo(repo_path)?;
 
         // Check if worktree is dirty before proceeding
         self.check_worktree_clean(&worktree_repo)?;
+        self.check_worktree_clean(&main_repo)?;
 
         // Verify the task branch exists in the worktree
         let task_branch = worktree_repo
@@ -524,8 +553,17 @@ impl GitService {
             base_branch_name,
         )?;
 
+        // Reset the task branch to point to the squash commit
+        // This allows follow-up work to continue from the merged state without conflicts
+        let task_refname = format!("refs/heads/{branch_name}");
+        main_repo.reference(
+            &task_refname,
+            squash_commit_id,
+            true,
+            "Reset task branch after merge in main repo",
+        )?;
+
         // Fix: Update main repo's HEAD if it's pointing to the base branch
-        let main_repo = self.open_repo(repo_path)?;
         let refname = format!("refs/heads/{base_branch_name}");
 
         if let Ok(main_head) = main_repo.head()
@@ -542,14 +580,36 @@ impl GitService {
         Ok(squash_commit_id.to_string())
     }
 
-    pub fn get_branch_status(
+    pub fn get_local_branch_status(
         &self,
         repo_path: &Path,
         branch_name: &str,
         base_branch_name: &str,
-        is_merged: bool,
-        github_token: Option<String>,
-    ) -> Result<BranchStatus, GitServiceError> {
+    ) -> Result<(usize, usize), GitServiceError> {
+        let repo = Repository::open(repo_path)?;
+        let branch_ref = repo
+            // try "refs/heads/<name>" first, then raw name
+            .find_reference(&format!("refs/heads/{branch_name}"))
+            .or_else(|_| repo.find_reference(branch_name))?;
+        let branch_oid = branch_ref.target().unwrap();
+        // Calculate ahead/behind counts using the stored base branch
+        let base_oid = repo
+            .find_branch(base_branch_name, BranchType::Local)?
+            .get()
+            .target()
+            .ok_or(GitServiceError::BranchNotFound(format!(
+                "refs/heads/{base_branch_name}"
+            )))?;
+        let (a, b) = repo.graph_ahead_behind(branch_oid, base_oid)?;
+        Ok((a, b))
+    }
+
+    pub fn get_remote_branch_status(
+        &self,
+        repo_path: &Path,
+        branch_name: &str,
+        github_token: String,
+    ) -> Result<(usize, usize), GitServiceError> {
         let repo = Repository::open(repo_path)?;
 
         let branch_ref = repo
@@ -557,55 +617,25 @@ impl GitService {
             .find_reference(&format!("refs/heads/{branch_name}"))
             .or_else(|_| repo.find_reference(branch_name))?;
         let branch_oid = branch_ref.target().unwrap();
-
         // Check for unpushed commits by comparing with origin/branch_name
-        let (remote_commits_ahead, remote_commits_behind, remote_up_to_date) = if let Some(token) =
-            github_token
-            && self.fetch_from_remote(&repo, &token).is_ok()
-            && let Ok(remote_ref) =
-                repo.find_reference(&format!("refs/remotes/origin/{branch_name}"))
-            && let Some(remote_oid) = remote_ref.target()
-        {
-            let (a, b) = repo.graph_ahead_behind(branch_oid, remote_oid)?;
-            (Some(a), Some(b), Some(a == 0 && b == 0))
-        } else {
-            (None, None, None)
-        };
+        self.fetch_from_remote(&repo, &github_token)?;
+        let remote_oid = repo
+            .find_reference(&format!("refs/remotes/origin/{branch_name}"))?
+            .target()
+            .ok_or(GitServiceError::BranchNotFound(format!(
+                "origin/{branch_name}"
+            )))?;
+        let (a, b) = repo.graph_ahead_behind(branch_oid, remote_oid)?;
+        Ok((a, b))
+    }
 
-        // Calculate ahead/behind counts using the stored base branch
-        let (commits_ahead, commits_behind, up_to_date) = if let Ok(base_branch) =
-            repo.find_branch(base_branch_name, BranchType::Local)
-            && let Some(base_oid) = base_branch.get().target()
-        {
-            let (a, b) = repo.graph_ahead_behind(branch_oid, base_oid)?;
-            (Some(a), Some(b), Some(a == 0 && b == 0))
-        } else {
-            // Base branch doesn't exist, assume no relationship
-            (None, None, None)
-        };
-
-        let mut status_opts = StatusOptions::new();
-        status_opts
-            .include_untracked(true)
-            .recurse_untracked_dirs(true)
-            .include_ignored(false);
-
-        let has_uncommitted_changes = repo
-            .statuses(Some(&mut status_opts))?
-            .iter()
-            .any(|e| e.status() != Status::CURRENT);
-
-        Ok(BranchStatus {
-            commits_behind,
-            commits_ahead,
-            up_to_date,
-            merged: is_merged,
-            has_uncommitted_changes,
-            base_branch_name: base_branch_name.to_string(),
-            remote_commits_behind,
-            remote_commits_ahead,
-            remote_up_to_date,
-        })
+    pub fn is_worktree_clean(&self, worktree_path: &Path) -> Result<bool, GitServiceError> {
+        let repo = self.open_repo(worktree_path)?;
+        match self.check_worktree_clean(&repo) {
+            Ok(()) => Ok(true),
+            Err(GitServiceError::WorktreeDirty(_, _)) => Ok(false),
+            Err(e) => Err(e),
+        }
     }
 
     /// Check if the worktree is clean (no uncommitted changes to tracked files)
@@ -639,20 +669,50 @@ impl GitService {
             }
 
             if !dirty_files.is_empty() {
-                return Err(GitServiceError::WorktreeDirty(dirty_files.join(", ")));
+                let branch_name = repo
+                    .head()
+                    .ok()
+                    .and_then(|h| h.shorthand().map(|s| s.to_string()))
+                    .unwrap_or_else(|| "unknown branch".to_string());
+                return Err(GitServiceError::WorktreeDirty(
+                    branch_name,
+                    dirty_files.join(", "),
+                ));
             }
         }
 
         Ok(())
     }
 
-    pub fn get_current_branch(&self, repo_path: &Path) -> Result<String, git2::Error> {
-        let repo = Repository::open(repo_path)?;
+    /// Get current HEAD information including branch name and commit OID
+    pub fn get_head_info(&self, repo_path: &Path) -> Result<HeadInfo, GitServiceError> {
+        let repo = self.open_repo(repo_path)?;
         let head = repo.head()?;
-        if let Some(branch_name) = head.shorthand() {
-            Ok(branch_name.to_string())
+
+        let branch = if let Some(branch_name) = head.shorthand() {
+            branch_name.to_string()
         } else {
-            Ok("HEAD".to_string())
+            "HEAD".to_string()
+        };
+
+        let oid = if let Some(target_oid) = head.target() {
+            target_oid.to_string()
+        } else {
+            // Handle case where HEAD exists but has no target (empty repo)
+            return Err(GitServiceError::InvalidRepository(
+                "Repository HEAD has no target commit".to_string(),
+            ));
+        };
+
+        Ok(HeadInfo { branch, oid })
+    }
+
+    pub fn get_current_branch(&self, repo_path: &Path) -> Result<String, git2::Error> {
+        // Thin wrapper for backward compatibility
+        match self.get_head_info(repo_path) {
+            Ok(head_info) => Ok(head_info.branch),
+            Err(GitServiceError::Git(git_err)) => Err(git_err),
+            Err(_) => Err(git2::Error::from_str("Failed to get head info")),
         }
     }
 
@@ -842,6 +902,9 @@ impl GitService {
 
         let new_base_commit_id = base_branch.get().peel_to_commit()?.id();
 
+        // Remember the original task-branch commit before we touch anything
+        let original_head_oid = worktree_repo.head()?.peel_to_commit()?.id();
+
         // Get the HEAD commit of the worktree (the changes to rebase)
         let head = worktree_repo.head()?;
         let task_branch_commit_id = head.peel_to_commit()?.id();
@@ -872,17 +935,32 @@ impl GitService {
             new_base_commit_id,
         )?;
 
-        if !unique_commits.is_empty() {
+        // Attempt the rebase operation
+        let rebase_result = if !unique_commits.is_empty() {
             // Reset HEAD to the new base branch
             let new_base_commit = worktree_repo.find_commit(new_base_commit_id)?;
             worktree_repo.reset(new_base_commit.as_object(), git2::ResetType::Hard, None)?;
 
             // Cherry-pick the unique commits
-            Self::cherry_pick_commits(&worktree_repo, &unique_commits, &signature)?;
+            Self::cherry_pick_commits(&worktree_repo, &unique_commits, &signature)
         } else {
             // No unique commits to rebase, just reset to new base
             let new_base_commit = worktree_repo.find_commit(new_base_commit_id)?;
             worktree_repo.reset(new_base_commit.as_object(), git2::ResetType::Hard, None)?;
+            Ok(())
+        };
+
+        // Handle rebase failure by restoring original state
+        if let Err(e) = rebase_result {
+            // Clean up any cherry-pick state
+            let _ = worktree_repo.cleanup_state();
+
+            // Restore original task branch state
+            if let Ok(orig_commit) = worktree_repo.find_commit(original_head_oid) {
+                let _ = worktree_repo.reset(orig_commit.as_object(), git2::ResetType::Hard, None);
+            }
+
+            return Err(e);
         }
 
         // Get the final commit ID after rebase
@@ -959,7 +1037,7 @@ impl GitService {
     pub fn get_github_repo_info(
         &self,
         repo_path: &Path,
-    ) -> Result<(String, String), GitServiceError> {
+    ) -> Result<GitHubRepoInfo, GitServiceError> {
         let repo = self.open_repo(repo_path)?;
         let remote = repo.find_remote("origin").map_err(|_| {
             GitServiceError::InvalidRepository("No 'origin' remote found".to_string())
@@ -976,7 +1054,7 @@ impl GitService {
         if let Some(captures) = github_regex.captures(url) {
             let owner = captures.get(1).unwrap().as_str().to_string();
             let repo_name = captures.get(2).unwrap().as_str().to_string();
-            Ok((owner, repo_name))
+            Ok(GitHubRepoInfo { owner, repo_name })
         } else {
             Err(GitServiceError::InvalidRepository(format!(
                 "Not a GitHub repository: {url}"
@@ -992,6 +1070,7 @@ impl GitService {
         github_token: &str,
     ) -> Result<(), GitServiceError> {
         let repo = Repository::open(worktree_path)?;
+        self.check_worktree_clean(&repo)?;
 
         // Get the remote
         let remote = repo.find_remote("origin")?;
@@ -1164,7 +1243,7 @@ impl GitService {
             let mut index = repo.index()?;
             if index.has_conflicts() {
                 return Err(GitServiceError::MergeConflicts(format!(
-                    "Cherry-pick failed due to conflicts on commit {commit_id}"
+                    "Cherry-pick failed due to conflicts on commit {commit_id}, please resolve conflicts manually"
                 )));
             }
 
@@ -1237,6 +1316,80 @@ impl GitService {
         );
 
         Ok(repo)
+    }
+
+    /// Collect file statistics from recent commits for ranking purposes
+    pub fn collect_recent_file_stats(
+        &self,
+        repo_path: &Path,
+        commit_limit: usize,
+    ) -> Result<HashMap<String, FileStat>, GitServiceError> {
+        let repo = self.open_repo(repo_path)?;
+        let mut stats: HashMap<String, FileStat> = HashMap::new();
+
+        // Set up revision walk from HEAD
+        let mut revwalk = repo.revwalk()?;
+        revwalk.push_head()?;
+        revwalk.set_sorting(Sort::TIME)?;
+
+        // Iterate through recent commits
+        for (commit_index, oid_result) in revwalk.take(commit_limit).enumerate() {
+            let oid = oid_result?;
+            let commit = repo.find_commit(oid)?;
+
+            // Get commit timestamp
+            let commit_time = {
+                let time = commit.time();
+                DateTime::from_timestamp(time.seconds(), 0).unwrap_or_else(Utc::now)
+            };
+
+            // Get the commit tree
+            let commit_tree = commit.tree()?;
+
+            // For the first commit (no parent), diff against empty tree
+            let parent_tree = if commit.parent_count() == 0 {
+                None
+            } else {
+                Some(commit.parent(0)?.tree()?)
+            };
+
+            // Create diff between parent and current commit
+            let diff = repo.diff_tree_to_tree(parent_tree.as_ref(), Some(&commit_tree), None)?;
+
+            // Process each changed file in this commit
+            diff.foreach(
+                &mut |delta, _progress| {
+                    // Get the file path - prefer new file path, fall back to old
+                    if let Some(path) = delta.new_file().path().or_else(|| delta.old_file().path())
+                    {
+                        let path_str = path.to_string_lossy().to_string();
+
+                        // Update or insert file stats
+                        let stat = stats.entry(path_str).or_insert(FileStat {
+                            last_index: commit_index,
+                            commit_count: 0,
+                            last_time: commit_time,
+                        });
+
+                        // Increment commit count
+                        stat.commit_count += 1;
+
+                        // Keep the most recent change (smallest index)
+                        if commit_index < stat.last_index {
+                            stat.last_index = commit_index;
+                            stat.last_time = commit_time;
+                        }
+                    }
+
+                    true // Continue iteration
+                },
+                None, // No binary callback
+                None, // No hunk callback
+                None, // No line callback
+            )?;
+        }
+
+        Ok(stats)
     }
 }
 

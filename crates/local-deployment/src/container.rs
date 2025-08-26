@@ -18,6 +18,7 @@ use db::{
             ExecutionContext, ExecutionProcess, ExecutionProcessRunReason, ExecutionProcessStatus,
         },
         executor_session::ExecutorSession,
+        merge::Merge,
         project::Project,
         task::{Task, TaskStatus},
         task_attempt::TaskAttempt,
@@ -26,7 +27,10 @@ use db::{
 use deployment::DeploymentError;
 use executors::{
     actions::{Executable, ExecutorAction},
-    logs::utils::{ConversationPatch, patch::escape_json_pointer_segment},
+    logs::{
+        NormalizedEntry, NormalizedEntryType,
+        utils::{ConversationPatch, patch::escape_json_pointer_segment},
+    },
 };
 use futures::{StreamExt, TryStreamExt, stream::select};
 use notify_debouncer_full::DebouncedEvent;
@@ -37,6 +41,7 @@ use services::services::{
     container::{ContainerError, ContainerRef, ContainerService},
     filesystem_watcher,
     git::{DiffTarget, GitService},
+    image::ImageService,
     notification::NotificationService,
     worktree_manager::WorktreeManager,
 };
@@ -58,6 +63,7 @@ pub struct LocalContainerService {
     msg_stores: Arc<RwLock<HashMap<Uuid, Arc<MsgStore>>>>,
     config: Arc<RwLock<Config>>,
     git: GitService,
+    image_service: ImageService,
     analytics: Option<AnalyticsContext>,
 }
 
@@ -67,6 +73,7 @@ impl LocalContainerService {
         msg_stores: Arc<RwLock<HashMap<Uuid, Arc<MsgStore>>>>,
         config: Arc<RwLock<Config>>,
         git: GitService,
+        image_service: ImageService,
         analytics: Option<AnalyticsContext>,
     ) -> Self {
         let child_store = Arc::new(RwLock::new(HashMap::new()));
@@ -77,6 +84,7 @@ impl LocalContainerService {
             msg_stores,
             config,
             git,
+            image_service,
             analytics,
         }
     }
@@ -109,6 +117,15 @@ impl LocalContainerService {
                 ctx.execution_process.run_reason,
                 ExecutionProcessRunReason::DevServer
             ))
+    }
+
+    /// Finalize task execution by updating status to InReview and sending notifications
+    async fn finalize_task(db: &DBService, config: &Arc<RwLock<Config>>, ctx: &ExecutionContext) {
+        if let Err(e) = Task::update_status(&db.pool, ctx.task.id, TaskStatus::InReview).await {
+            tracing::error!("Failed to update task status to InReview: {e}");
+        }
+        let notify_cfg = config.read().await.notifications.clone();
+        NotificationService::notify_execution_halted(notify_cfg, ctx).await;
     }
 
     /// Defensively check for externally deleted worktrees and mark them as deleted in the database
@@ -322,33 +339,62 @@ impl LocalContainerService {
                     }
 
                     if let Ok(ctx) = ExecutionProcess::load_context(&db.pool, exec_id).await {
+                        // Update executor session summary if available
+                        if let Err(e) = container.update_executor_session_summary(&exec_id).await {
+                            tracing::warn!("Failed to update executor session summary: {}", e);
+                        }
+
                         if matches!(
                             ctx.execution_process.status,
                             ExecutionProcessStatus::Completed
                         ) && exit_code == Some(0)
                         {
-                            if let Err(e) = container.try_commit_changes(&ctx).await {
-                                tracing::error!("Failed to commit changes after execution: {}", e);
-                            }
+                            // Commit changes (if any) and get feedback about whether changes were made
+                            let changes_committed = match container.try_commit_changes(&ctx).await {
+                                Ok(committed) => committed,
+                                Err(e) => {
+                                    tracing::error!(
+                                        "Failed to commit changes after execution: {}",
+                                        e
+                                    );
+                                    // Treat commit failures as if changes were made to be safe
+                                    true
+                                }
+                            };
 
-                            // If the process exited successfully, start the next action
-                            if let Err(e) = container.try_start_next_action(&ctx).await {
-                                tracing::error!(
-                                    "Failed to start next action after completion: {}",
-                                    e
+                            // Determine whether to start the next action based on execution context
+                            let should_start_next = if matches!(
+                                ctx.execution_process.run_reason,
+                                ExecutionProcessRunReason::CodingAgent
+                            ) {
+                                // Skip CleanupScript when CodingAgent produced no changes
+                                changes_committed
+                            } else {
+                                // SetupScript always proceeds to CodingAgent
+                                true
+                            };
+
+                            if should_start_next {
+                                // If the process exited successfully, start the next action
+                                if let Err(e) = container.try_start_next_action(&ctx).await {
+                                    tracing::error!(
+                                        "Failed to start next action after completion: {}",
+                                        e
+                                    );
+                                }
+                            } else {
+                                tracing::info!(
+                                    "Skipping cleanup script for task attempt {} - no changes made by coding agent",
+                                    ctx.task_attempt.id
                                 );
+
+                                // Manually finalize task since we're bypassing normal execution flow
+                                Self::finalize_task(&db, &config, &ctx).await;
                             }
                         }
 
                         if Self::should_finalize(&ctx) {
-                            if let Err(e) =
-                                Task::update_status(&db.pool, ctx.task.id, TaskStatus::InReview)
-                                    .await
-                            {
-                                tracing::error!("Failed to update task status to InReview: {e}");
-                            }
-                            let notify_cfg = config.read().await.notifications.clone();
-                            NotificationService::notify_execution_halted(notify_cfg, &ctx).await;
+                            Self::finalize_task(&db, &config, &ctx).await;
                         }
 
                         // Fire event when CodingAgent execution has finished
@@ -682,6 +728,15 @@ impl ContainerService for LocalContainerService {
                 });
         }
 
+        // Copy task images from cache to worktree
+        if let Err(e) = self
+            .image_service
+            .copy_images_by_task_to_worktree(&worktree_path, task.id)
+            .await
+        {
+            tracing::warn!("Failed to copy task images to worktree: {}", e);
+        }
+
         // Update both container_ref and branch in the database
         TaskAttempt::update_container_ref(
             &self.db.pool,
@@ -757,6 +812,20 @@ impl ContainerService for LocalContainerService {
         .await?;
 
         Ok(container_ref.to_string())
+    }
+
+    async fn is_container_clean(&self, task_attempt: &TaskAttempt) -> Result<bool, ContainerError> {
+        if let Some(container_ref) = &task_attempt.container_ref {
+            // If container_ref is set, check if the worktree exists
+            let path = PathBuf::from(container_ref);
+            if path.exists() {
+                self.git().is_worktree_clean(&path).map_err(|e| e.into())
+            } else {
+                return Ok(true); // No worktree means it's clean
+            }
+        } else {
+            return Ok(true); // No container_ref means no worktree, so it's clean
+        }
     }
 
     async fn start_execution_inner(
@@ -850,16 +919,9 @@ impl ContainerService for LocalContainerService {
         task_attempt: &TaskAttempt,
     ) -> Result<futures::stream::BoxStream<'static, Result<Event, std::io::Error>>, ContainerError>
     {
-        let container_ref = self.ensure_container_exists(task_attempt).await?;
-
-        let worktree_path = PathBuf::from(container_ref);
         let project_repo_path = self.get_project_repo_path(task_attempt).await?;
-
-        // Handle merged attempts (static diff)
-        if let Some(merge_commit_id) = &task_attempt.merge_commit {
-            return self.create_merged_diff_stream(&project_repo_path, merge_commit_id);
-        }
-
+        let latest_merge =
+            Merge::find_latest_by_task_attempt_id(&self.db.pool, task_attempt.id).await?;
         let task_branch = task_attempt
             .branch
             .clone()
@@ -867,6 +929,29 @@ impl ContainerService for LocalContainerService {
                 "Task attempt {} does not have a branch",
                 task_attempt.id
             )))?;
+
+        let is_ahead = if let Ok((ahead, _)) = self.git().get_local_branch_status(
+            &project_repo_path,
+            &task_branch,
+            &task_attempt.base_branch,
+        ) {
+            ahead > 0
+        } else {
+            false
+        };
+
+        // Show merged diff when no new work is on the branch or container
+        if let Some(merge) = &latest_merge
+            && let Some(commit) = merge.merge_commit()
+            && self.is_container_clean(task_attempt).await?
+            && !is_ahead
+        {
+            return self.create_merged_diff_stream(&project_repo_path, &commit);
+        }
+
+        // worktree is needed for non-merged diffs
+        let container_ref = self.ensure_container_exists(task_attempt).await?;
+        let worktree_path = PathBuf::from(container_ref);
 
         // Handle ongoing attempts (live streaming diff)
         self.create_live_diff_stream(
@@ -878,12 +963,12 @@ impl ContainerService for LocalContainerService {
         .await
     }
 
-    async fn try_commit_changes(&self, ctx: &ExecutionContext) -> Result<(), ContainerError> {
+    async fn try_commit_changes(&self, ctx: &ExecutionContext) -> Result<bool, ContainerError> {
         if !matches!(
             ctx.execution_process.run_reason,
             ExecutionProcessRunReason::CodingAgent | ExecutionProcessRunReason::CleanupScript,
         ) {
-            return Ok(());
+            return Ok(false);
         }
 
         let message = match ctx.execution_process.run_reason {
@@ -942,7 +1027,8 @@ impl ContainerService for LocalContainerService {
             message
         );
 
-        Ok(self.git().commit(Path::new(container_ref), &message)?)
+        let changes_committed = self.git().commit(Path::new(container_ref), &message)?;
+        Ok(changes_committed)
     }
 
     /// Copy files from the original project directory to the worktree
@@ -989,6 +1075,85 @@ impl ContainerService for LocalContainerService {
                 )));
             }
         }
+        Ok(())
+    }
+}
+
+impl LocalContainerService {
+    /// Extract the last assistant message from the MsgStore history
+    fn extract_last_assistant_message(&self, exec_id: &Uuid) -> Option<String> {
+        // Get the MsgStore for this execution
+        let msg_stores = self.msg_stores.try_read().ok()?;
+        let msg_store = msg_stores.get(exec_id)?;
+
+        // Get the history and scan in reverse for the last assistant message
+        let history = msg_store.get_history();
+
+        for msg in history.iter().rev() {
+            if let LogMsg::JsonPatch(patch) = msg {
+                // Try to extract a NormalizedEntry from the patch
+                if let Some(entry) = self.extract_normalized_entry_from_patch(patch)
+                    && matches!(entry.entry_type, NormalizedEntryType::AssistantMessage)
+                {
+                    let content = entry.content.trim();
+                    if !content.is_empty() {
+                        // Truncate to reasonable size (4KB as Oracle suggested)
+                        const MAX_SUMMARY_LENGTH: usize = 4096;
+                        if content.len() > MAX_SUMMARY_LENGTH {
+                            return Some(format!("{}...", &content[..MAX_SUMMARY_LENGTH]));
+                        }
+                        return Some(content.to_string());
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Extract a NormalizedEntry from a JsonPatch if it contains one
+    fn extract_normalized_entry_from_patch(
+        &self,
+        patch: &json_patch::Patch,
+    ) -> Option<NormalizedEntry> {
+        // Convert the patch to JSON to examine its structure
+        if let Ok(patch_json) = serde_json::to_value(patch)
+            && let Some(operations) = patch_json.as_array()
+        {
+            for operation in operations {
+                if let Some(value) = operation.get("value") {
+                    // Try to extract a NormalizedEntry from the value
+                    if let Some(patch_type) = value.get("type").and_then(|t| t.as_str())
+                        && patch_type == "NORMALIZED_ENTRY"
+                        && let Some(content) = value.get("content")
+                        && let Ok(entry) =
+                            serde_json::from_value::<NormalizedEntry>(content.clone())
+                    {
+                        return Some(entry);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Update the executor session summary with the final assistant message
+    async fn update_executor_session_summary(&self, exec_id: &Uuid) -> Result<(), anyhow::Error> {
+        // Check if there's an executor session for this execution process
+        let session =
+            ExecutorSession::find_by_execution_process_id(&self.db.pool, *exec_id).await?;
+
+        if let Some(session) = session {
+            // Only update if summary is not already set
+            if session.summary.is_none() {
+                if let Some(summary) = self.extract_last_assistant_message(exec_id) {
+                    ExecutorSession::update_summary(&self.db.pool, *exec_id, &summary).await?;
+                } else {
+                    tracing::debug!("No assistant message found for execution {}", exec_id);
+                }
+            }
+        }
+
         Ok(())
     }
 }

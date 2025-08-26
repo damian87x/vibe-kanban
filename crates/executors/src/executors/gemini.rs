@@ -26,6 +26,7 @@ use crate::{
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
 pub struct Gemini {
     pub command: CommandBuilder,
+    pub append_prompt: Option<String>,
 }
 
 #[async_trait]
@@ -38,8 +39,9 @@ impl StandardCodingAgentExecutor for Gemini {
         let (shell_cmd, shell_arg) = get_shell_command();
         let gemini_command = self.command.build_initial();
 
-        let mut command = Command::new(shell_cmd);
+        let combined_prompt = utils::text::combine_prompt(&self.append_prompt, prompt);
 
+        let mut command = Command::new(shell_cmd);
         command
             .kill_on_drop(true)
             .stdin(Stdio::piped())
@@ -54,7 +56,7 @@ impl StandardCodingAgentExecutor for Gemini {
 
         // Write prompt to stdin
         if let Some(mut stdin) = child.inner().stdin.take() {
-            stdin.write_all(prompt.as_bytes()).await?;
+            stdin.write_all(combined_prompt.as_bytes()).await?;
             stdin.shutdown().await?;
         }
 
@@ -77,7 +79,7 @@ impl StandardCodingAgentExecutor for Gemini {
         _session_id: &str,
     ) -> Result<AsyncGroupChild, ExecutorError> {
         // Build comprehensive prompt with session context
-        let followup_prompt = Self::build_followup_prompt(current_dir, prompt).await?;
+        let followup_prompt = self.build_followup_prompt(current_dir, prompt).await?;
 
         let (shell_cmd, shell_arg) = get_shell_command();
         let gemini_command = self.command.build_follow_up(&[]);
@@ -133,7 +135,7 @@ impl StandardCodingAgentExecutor for Gemini {
     /// - stderr via [`normalize_stderr_logs`]
     /// - stdout via [`PlainTextLogProcessor`] with Gemini-specific formatting and default heuristics
     fn normalize_logs(&self, msg_store: Arc<MsgStore>, worktree_path: &PathBuf) {
-        let entry_index_counter = EntryIndexProvider::new();
+        let entry_index_counter = EntryIndexProvider::start_from(&msg_store);
         normalize_stderr_logs(msg_store.clone(), entry_index_counter.clone());
 
         // Send session ID to msg_store to enable follow-ups
@@ -160,6 +162,12 @@ impl StandardCodingAgentExecutor for Gemini {
                 .format_chunk(Box::new(|partial_line: Option<&str>, chunk: String| {
                     Self::format_stdout_chunk(&chunk, partial_line.unwrap_or(""))
                 }))
+                // Gemini CLI sometimes prints a non-conversational noise
+                .transform_lines({
+                    Box::new(move |lines: &mut Vec<String>| {
+                        lines.retain(|line| line != "Data collection is disabled.\n");
+                    })
+                })
                 .index_provider(entry_index_counter)
                 .build();
 
@@ -215,8 +223,7 @@ impl Gemini {
         prompt: String,
         resume_session: bool,
     ) {
-        let file_path =
-            Self::get_sessions_base_dir().join(current_dir.file_name().unwrap_or_default());
+        let file_path = Self::get_session_file_path(&current_dir).await;
 
         // Ensure the directory exists
         if let Some(parent) = file_path.parent() {
@@ -274,11 +281,11 @@ impl Gemini {
 
     /// Build comprehensive prompt with session context for follow-up execution
     async fn build_followup_prompt(
+        &self,
         current_dir: &PathBuf,
         prompt: &str,
     ) -> Result<String, ExecutorError> {
-        let session_file_path =
-            Self::get_sessions_base_dir().join(current_dir.file_name().unwrap_or_default());
+        let session_file_path = Self::get_session_file_path(current_dir).await;
 
         // Read existing session context
         let session_context = fs::read_to_string(&session_file_path).await.map_err(|e| {
@@ -298,12 +305,60 @@ The following is the conversation history from this session:
 {prompt}
 
 === INSTRUCTIONS ===
-You are continuing work on the above task. The execution history shows the previous conversation in this session. Please continue from where the previous execution left off, taking into account all the context provided above.
-"#
+You are continuing work on the above task. The execution history shows the previous conversation in this session. Please continue from where the previous execution left off, taking into account all the context provided above.{}
+"#,
+            self.append_prompt.clone().unwrap_or_default(),
         ))
     }
 
     fn get_sessions_base_dir() -> PathBuf {
+        // Determine base directory under user's home
+        let home = dirs::home_dir().unwrap_or_else(std::env::temp_dir);
+        if cfg!(debug_assertions) {
+            home.join(".vibe-kanban")
+                .join("dev")
+                .join("gemini_sessions")
+        } else {
+            home.join(".vibe-kanban").join("gemini_sessions")
+        }
+    }
+
+    fn get_legacy_sessions_base_dir() -> PathBuf {
+        // Previous location was under the temp-based vibe-kanban dir
         utils::path::get_vibe_kanban_temp_dir().join("gemini_sessions")
+    }
+
+    async fn get_session_file_path(current_dir: &PathBuf) -> PathBuf {
+        let file_name = current_dir.file_name().unwrap_or_default();
+        let new_base = Self::get_sessions_base_dir();
+        let new_path = new_base.join(file_name);
+
+        // Ensure base directory exists
+        if let Some(parent) = new_path.parent() {
+            let _ = fs::create_dir_all(parent).await;
+        }
+
+        // If the new file doesn't exist yet, try to migrate from legacy location
+        let new_exists = fs::metadata(&new_path).await.is_ok();
+        if !new_exists {
+            let legacy_path = Self::get_legacy_sessions_base_dir().join(file_name);
+            if fs::metadata(&legacy_path).await.is_ok() {
+                if let Err(e) = fs::rename(&legacy_path, &new_path).await {
+                    tracing::warn!(
+                        "Failed to migrate Gemini session from {:?} to {:?}: {}",
+                        legacy_path,
+                        new_path,
+                        e
+                    );
+                } else {
+                    tracing::info!(
+                        "Migrated Gemini session file from legacy temp directory to persistent directory: {:?}",
+                        new_path
+                    );
+                }
+            }
+        }
+
+        new_path
     }
 }
