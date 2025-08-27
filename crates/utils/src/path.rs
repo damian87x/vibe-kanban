@@ -82,20 +82,20 @@ pub fn make_path_relative(path: &str, worktree_path: &str) -> String {
 /// This allows prefix normalization to work when the full paths don't exist.
 fn normalize_macos_private_alias<P: AsRef<Path>>(p: P) -> PathBuf {
     let p = p.as_ref();
-    if cfg!(target_os = "macos")
-        && let Some(s) = p.to_str()
-    {
-        if s == "/private/var" {
-            return PathBuf::from("/var");
-        }
-        if let Some(rest) = s.strip_prefix("/private/var/") {
-            return PathBuf::from(format!("/var/{rest}"));
-        }
-        if s == "/private/tmp" {
-            return PathBuf::from("/tmp");
-        }
-        if let Some(rest) = s.strip_prefix("/private/tmp/") {
-            return PathBuf::from(format!("/tmp/{rest}"));
+    if cfg!(target_os = "macos") {
+        if let Some(s) = p.to_str() {
+            if s == "/private/var" {
+                return PathBuf::from("/var");
+            }
+            if let Some(rest) = s.strip_prefix("/private/var/") {
+                return PathBuf::from(format!("/var/{rest}"));
+            }
+            if s == "/private/tmp" {
+                return PathBuf::from("/tmp");
+            }
+            if let Some(rest) = s.strip_prefix("/private/tmp/") {
+                return PathBuf::from(format!("/tmp/{rest}"));
+            }
         }
     }
     p.to_path_buf()

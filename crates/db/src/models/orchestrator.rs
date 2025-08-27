@@ -27,6 +27,14 @@ impl OrchestratorStageOutput {
         success: bool,
     ) -> Result<Self, sqlx::Error> {
         let id = Uuid::new_v4();
+        let stage_str = match stage {
+            OrchestratorStage::Pending => "pending",
+            OrchestratorStage::Specification => "specification",
+            OrchestratorStage::Implementation => "implementation",
+            OrchestratorStage::ReviewQa => "review_qa",
+            OrchestratorStage::Completed => "completed",
+        };
+        let success_int = if success { 1i64 } else { 0i64 };
         sqlx::query_as!(
             OrchestratorStageOutput,
             r#"INSERT INTO orchestrator_stage_outputs (id, task_id, stage, command_used, output, success) 
@@ -39,10 +47,10 @@ impl OrchestratorStageOutput {
                RETURNING id as "id!: Uuid", task_id as "task_id!: Uuid", stage as "stage!: OrchestratorStage", command_used, output, success as "success!: bool", created_at as "created_at!: DateTime<Utc>""#,
             id,
             task_id,
-            stage as OrchestratorStage,
+            stage_str,
             command_used,
             output,
-            success as i64
+            success_int
         )
         .fetch_one(pool)
         .await
@@ -53,13 +61,20 @@ impl OrchestratorStageOutput {
         task_id: Uuid,
         stage: OrchestratorStage,
     ) -> Result<Option<Self>, sqlx::Error> {
+        let stage_str = match stage {
+            OrchestratorStage::Pending => "pending",
+            OrchestratorStage::Specification => "specification",
+            OrchestratorStage::Implementation => "implementation",
+            OrchestratorStage::ReviewQa => "review_qa",
+            OrchestratorStage::Completed => "completed",
+        };
         sqlx::query_as!(
             OrchestratorStageOutput,
             r#"SELECT id as "id!: Uuid", task_id as "task_id!: Uuid", stage as "stage!: OrchestratorStage", command_used, output, success as "success!: bool", created_at as "created_at!: DateTime<Utc>"
                FROM orchestrator_stage_outputs 
                WHERE task_id = $1 AND stage = $2"#,
             task_id,
-            stage as OrchestratorStage
+            stage_str
         )
         .fetch_optional(pool)
         .await

@@ -165,16 +165,21 @@ pub trait Deployment: Clone + Send + Sync + 'static {
                 ExecutionProcessRunReason::CodingAgent
                     | ExecutionProcessRunReason::SetupScript
                     | ExecutionProcessRunReason::CleanupScript
-            ) && let Ok(Some(task_attempt)) =
-                TaskAttempt::find_by_id(&self.db().pool, process.task_attempt_id).await
-                && let Ok(Some(task)) = task_attempt.parent_task(&self.db().pool).await
-                && let Err(e) =
-                    Task::update_status(&self.db().pool, task.id, TaskStatus::InReview).await
-            {
-                tracing::error!(
-                    "Failed to update task status to InReview for orphaned attempt: {}",
-                    e
-                );
+            ) {
+                if let Ok(Some(task_attempt)) =
+                    TaskAttempt::find_by_id(&self.db().pool, process.task_attempt_id).await
+                {
+                    if let Ok(Some(task)) = task_attempt.parent_task(&self.db().pool).await {
+                        if let Err(e) =
+                            Task::update_status(&self.db().pool, task.id, TaskStatus::InReview).await
+                        {
+                            tracing::error!(
+                                "Failed to update task status to InReview for orphaned attempt: {}",
+                                e
+                            );
+                        }
+                    }
+                }
             }
         }
         Ok(())

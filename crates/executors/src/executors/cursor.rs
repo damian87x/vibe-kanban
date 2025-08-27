@@ -150,9 +150,11 @@ impl StandardCodingAgentExecutor for Cursor {
                 };
 
                 // Push session_id if present
-                if !session_id_reported && let Some(session_id) = cursor_json.extract_session_id() {
-                    msg_store.push_session_id(session_id);
-                    session_id_reported = true;
+                if !session_id_reported {
+                    if let Some(session_id) = cursor_json.extract_session_id() {
+                        msg_store.push_session_id(session_id);
+                        session_id_reported = true;
+                    }
                 }
 
                 let is_assistant_message = matches!(cursor_json, CursorJson::Assistant { .. });
@@ -164,17 +166,19 @@ impl StandardCodingAgentExecutor for Cursor {
 
                 match &cursor_json {
                     CursorJson::System { model, .. } => {
-                        if !model_reported && let Some(model) = model.as_ref() {
-                            let entry = NormalizedEntry {
-                                timestamp: None,
-                                entry_type: NormalizedEntryType::SystemMessage,
-                                content: format!("System initialized with model: {model}"),
-                                metadata: None,
-                            };
-                            let id = entry_index_provider.next();
-                            msg_store
-                                .push_patch(ConversationPatch::add_normalized_entry(id, entry));
-                            model_reported = true;
+                        if !model_reported {
+                            if let Some(model) = model.as_ref() {
+                                let entry = NormalizedEntry {
+                                    timestamp: None,
+                                    entry_type: NormalizedEntryType::SystemMessage,
+                                    content: format!("System initialized with model: {model}"),
+                                    metadata: None,
+                                };
+                                let id = entry_index_provider.next();
+                                msg_store
+                                    .push_patch(ConversationPatch::add_normalized_entry(id, entry));
+                                model_reported = true;
+                            }
                         }
                     }
 

@@ -19,3 +19,4 @@ ts-rs = { git = "https://github.com/xazukx/ts-rs.git", branch = "use-ts-enum", f
 debug = true
 split-debuginfo = "packed"
 strip = true
+

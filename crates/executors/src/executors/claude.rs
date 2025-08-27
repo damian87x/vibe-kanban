@@ -202,11 +202,11 @@ impl ClaudeLogProcessor {
                     match serde_json::from_str::<ClaudeJson>(trimmed) {
                         Ok(claude_json) => {
                             // Extract session ID if present
-                            if !session_id_extracted
-                                && let Some(session_id) = Self::extract_session_id(&claude_json)
-                            {
-                                msg_store.push_session_id(session_id);
-                                session_id_extracted = true;
+                            if !session_id_extracted {
+                                if let Some(session_id) = Self::extract_session_id(&claude_json) {
+                                    msg_store.push_session_id(session_id);
+                                    session_id_extracted = true;
+                                }
                             }
 
                             // Convert to normalized entries and create patches
@@ -301,16 +301,16 @@ impl ClaudeLogProcessor {
             ClaudeJson::Assistant { message, .. } => {
                 let mut entries = Vec::new();
 
-                if self.model_name.is_none()
-                    && let Some(model) = message.model.as_ref()
-                {
-                    self.model_name = Some(model.clone());
-                    entries.push(NormalizedEntry {
-                        timestamp: None,
-                        entry_type: NormalizedEntryType::SystemMessage,
-                        content: format!("System initialized with model: {model}"),
-                        metadata: None,
-                    });
+                if self.model_name.is_none() {
+                    if let Some(model) = message.model.as_ref() {
+                        self.model_name = Some(model.clone());
+                        entries.push(NormalizedEntry {
+                            timestamp: None,
+                            entry_type: NormalizedEntryType::SystemMessage,
+                            content: format!("System initialized with model: {model}"),
+                            metadata: None,
+                        });
+                    }
                 }
 
                 for content_item in &message.content {

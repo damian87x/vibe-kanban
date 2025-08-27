@@ -1,0 +1,56 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO orchestrator_stage_outputs (id, task_id, stage, command_used, output, success) \n               VALUES ($1, $2, $3, $4, $5, $6) \n               ON CONFLICT(task_id, stage) DO UPDATE SET \n                   command_used = excluded.command_used,\n                   output = excluded.output,\n                   success = excluded.success,\n                   created_at = datetime('now', 'subsec')\n               RETURNING id as \"id!: Uuid\", task_id as \"task_id!: Uuid\", stage as \"stage!: OrchestratorStage\", command_used, output, success as \"success!: bool\", created_at as \"created_at!: DateTime<Utc>\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "task_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Blob"
+      },
+      {
+        "name": "stage!: OrchestratorStage",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "command_used",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "output",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "success!: bool",
+        "ordinal": 5,
+        "type_info": "Integer"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 6,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "8428a971ddd7b43c53f0c227795a05514d6c869b84d857a84d666d9e753cd6a3"
+}

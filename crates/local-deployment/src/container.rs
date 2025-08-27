@@ -309,16 +309,17 @@ impl LocalContainerService {
                         Err(_) => (None, ExecutionProcessStatus::Failed),
                     };
 
-                    if !ExecutionProcess::was_killed(&db.pool, exec_id).await
-                        && let Err(e) = ExecutionProcess::update_completion(
+                    if !ExecutionProcess::was_killed(&db.pool, exec_id).await {
+                        if let Err(e) = ExecutionProcess::update_completion(
                             &db.pool,
                             exec_id,
                             status.clone(),
                             exit_code,
                         )
                         .await
-                    {
-                        tracing::error!("Failed to update execution process completion: {}", e);
+                        {
+                            tracing::error!("Failed to update execution process completion: {}", e);
+                        }
                     }
 
                     if let Ok(ctx) = ExecutionProcess::load_context(&db.pool, exec_id).await {
@@ -357,15 +358,16 @@ impl LocalContainerService {
                                 &ctx.execution_process.run_reason,
                                 ExecutionProcessRunReason::CodingAgent
                             )
-                            && let Some(analytics) = &analytics
                         {
-                            analytics.analytics_service.track_event(&analytics.user_id, "task_attempt_finished", Some(json!({
-                                    "task_id": ctx.task.id.to_string(),
-                                    "project_id": ctx.task.project_id.to_string(),
-                                    "attempt_id": ctx.task_attempt.id.to_string(),
-                                    "execution_success": matches!(ctx.execution_process.status, ExecutionProcessStatus::Completed),
-                                    "exit_code": ctx.execution_process.exit_code,
-                                })));
+                            if let Some(analytics) = &analytics {
+                                analytics.analytics_service.track_event(&analytics.user_id, "task_attempt_finished", Some(json!({
+                                        "task_id": ctx.task.id.to_string(),
+                                        "project_id": ctx.task.project_id.to_string(),
+                                        "attempt_id": ctx.task_attempt.id.to_string(),
+                                        "execution_success": matches!(ctx.execution_process.status, ExecutionProcessStatus::Completed),
+                                        "exit_code": ctx.execution_process.exit_code,
+                                    })));
+                            }
                         }
                     }
 
@@ -831,10 +833,12 @@ impl ContainerService for LocalContainerService {
                 ctx.execution_process.run_reason,
                 ExecutionProcessRunReason::DevServer
             )
-            && let Err(e) =
-                Task::update_status(&self.db.pool, ctx.task.id, TaskStatus::InReview).await
         {
-            tracing::error!("Failed to update task status to InReview: {e}");
+            if let Err(e) =
+                Task::update_status(&self.db.pool, ctx.task.id, TaskStatus::InReview).await
+            {
+                tracing::error!("Failed to update task status to InReview: {e}");
+            }
         }
 
         tracing::debug!(

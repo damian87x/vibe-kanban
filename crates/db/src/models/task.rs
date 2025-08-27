@@ -105,7 +105,7 @@ impl Task {
   t.parent_task_attempt           AS "parent_task_attempt: Uuid",
   t.orchestrator_stage            AS "orchestrator_stage: OrchestratorStage",
   t.orchestrator_context,
-  t.container_id,
+  t.container_id                   AS "container_id: i32",
   t.created_at                    AS "created_at!: DateTime<Utc>",
   t.updated_at                    AS "updated_at!: DateTime<Utc>",
 
@@ -166,7 +166,7 @@ ORDER BY t.created_at DESC"#,
                 parent_task_attempt: rec.parent_task_attempt,
                 orchestrator_stage: rec.orchestrator_stage,
                 orchestrator_context: rec.orchestrator_context,
-                container_id: rec.container_id,
+                container_id: rec.container_id.map(|id| id as i32),
                 created_at: rec.created_at,
                 updated_at: rec.updated_at,
                 has_in_progress_attempt: rec.has_in_progress_attempt != 0,
@@ -182,7 +182,7 @@ ORDER BY t.created_at DESC"#,
     pub async fn find_by_id(pool: &SqlitePool, id: Uuid) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             Task,
-            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", parent_task_attempt as "parent_task_attempt: Uuid", orchestrator_stage as "orchestrator_stage: OrchestratorStage", orchestrator_context, container_id, created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
+            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", parent_task_attempt as "parent_task_attempt: Uuid", orchestrator_stage as "orchestrator_stage: OrchestratorStage", orchestrator_context, container_id as "container_id: i32", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
                FROM tasks 
                WHERE id = $1"#,
             id
@@ -194,7 +194,7 @@ ORDER BY t.created_at DESC"#,
     pub async fn find_by_rowid(pool: &SqlitePool, rowid: i64) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             Task,
-            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", parent_task_attempt as "parent_task_attempt: Uuid", orchestrator_stage as "orchestrator_stage: OrchestratorStage", orchestrator_context, container_id, created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
+            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", parent_task_attempt as "parent_task_attempt: Uuid", orchestrator_stage as "orchestrator_stage: OrchestratorStage", orchestrator_context, container_id as "container_id: i32", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
                FROM tasks 
                WHERE rowid = $1"#,
             rowid
@@ -210,7 +210,7 @@ ORDER BY t.created_at DESC"#,
     ) -> Result<Option<Self>, sqlx::Error> {
         sqlx::query_as!(
             Task,
-            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", parent_task_attempt as "parent_task_attempt: Uuid", orchestrator_stage as "orchestrator_stage: OrchestratorStage", orchestrator_context, container_id, created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
+            r#"SELECT id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", parent_task_attempt as "parent_task_attempt: Uuid", orchestrator_stage as "orchestrator_stage: OrchestratorStage", orchestrator_context, container_id as "container_id: i32", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>"
                FROM tasks 
                WHERE id = $1 AND project_id = $2"#,
             id,
@@ -229,7 +229,7 @@ ORDER BY t.created_at DESC"#,
             Task,
             r#"INSERT INTO tasks (id, project_id, title, description, status, parent_task_attempt) 
                VALUES ($1, $2, $3, $4, $5, $6) 
-               RETURNING id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", parent_task_attempt as "parent_task_attempt: Uuid", orchestrator_stage as "orchestrator_stage: OrchestratorStage", orchestrator_context, container_id, created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
+               RETURNING id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", parent_task_attempt as "parent_task_attempt: Uuid", orchestrator_stage as "orchestrator_stage: OrchestratorStage", orchestrator_context, container_id as "container_id: i32", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
             task_id,
             data.project_id,
             data.title,
@@ -255,7 +255,7 @@ ORDER BY t.created_at DESC"#,
             r#"UPDATE tasks 
                SET title = $3, description = $4, status = $5, parent_task_attempt = $6 
                WHERE id = $1 AND project_id = $2 
-               RETURNING id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", parent_task_attempt as "parent_task_attempt: Uuid", orchestrator_stage as "orchestrator_stage: OrchestratorStage", orchestrator_context, container_id, created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
+               RETURNING id as "id!: Uuid", project_id as "project_id!: Uuid", title, description, status as "status!: TaskStatus", parent_task_attempt as "parent_task_attempt: Uuid", orchestrator_stage as "orchestrator_stage: OrchestratorStage", orchestrator_context, container_id as "container_id: i32", created_at as "created_at!: DateTime<Utc>", updated_at as "updated_at!: DateTime<Utc>""#,
             id,
             project_id,
             title,
@@ -311,7 +311,7 @@ ORDER BY t.created_at DESC"#,
         // Find both children and parent for this attempt
         sqlx::query_as!(
             Task,
-            r#"SELECT DISTINCT t.id as "id!: Uuid", t.project_id as "project_id!: Uuid", t.title, t.description, t.status as "status!: TaskStatus", t.parent_task_attempt as "parent_task_attempt: Uuid", t.orchestrator_stage as "orchestrator_stage: OrchestratorStage", t.orchestrator_context, t.container_id, t.created_at as "created_at!: DateTime<Utc>", t.updated_at as "updated_at!: DateTime<Utc>"
+            r#"SELECT DISTINCT t.id as "id!: Uuid", t.project_id as "project_id!: Uuid", t.title, t.description, t.status as "status!: TaskStatus", t.parent_task_attempt as "parent_task_attempt: Uuid", t.orchestrator_stage as "orchestrator_stage: OrchestratorStage", t.orchestrator_context, t.container_id as "container_id: i32", t.created_at as "created_at!: DateTime<Utc>", t.updated_at as "updated_at!: DateTime<Utc>"
                FROM tasks t
                WHERE (
                    -- Find children: tasks that have this attempt as parent

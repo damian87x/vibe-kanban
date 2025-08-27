@@ -87,14 +87,17 @@ impl SessionHandler {
                 if let Ok(found) = Self::scan_directory(&path, session_id) {
                     return Ok(found);
                 }
-            } else if path.is_file()
-                && let Some(filename) = path.file_name()
-                && let Some(filename_str) = filename.to_str()
-                && filename_str.contains(session_id)
-                && filename_str.starts_with("rollout-")
-                && filename_str.ends_with(".jsonl")
-            {
-                return Ok(path);
+            } else if path.is_file() {
+                if let Some(filename) = path.file_name() {
+                    if let Some(filename_str) = filename.to_str() {
+                        if filename_str.contains(session_id)
+                            && filename_str.starts_with("rollout-")
+                            && filename_str.ends_with(".jsonl")
+                        {
+                            return Ok(path);
+                        }
+                    }
+                }
             }
         }
 

@@ -1,0 +1,80 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO tasks (id, project_id, title, description, status, parent_task_attempt) \n               VALUES ($1, $2, $3, $4, $5, $6) \n               RETURNING id as \"id!: Uuid\", project_id as \"project_id!: Uuid\", title, description, status as \"status!: TaskStatus\", parent_task_attempt as \"parent_task_attempt: Uuid\", orchestrator_stage as \"orchestrator_stage: OrchestratorStage\", orchestrator_context, container_id as \"container_id: i32\", created_at as \"created_at!: DateTime<Utc>\", updated_at as \"updated_at!: DateTime<Utc>\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: Uuid",
+        "ordinal": 0,
+        "type_info": "Blob"
+      },
+      {
+        "name": "project_id!: Uuid",
+        "ordinal": 1,
+        "type_info": "Blob"
+      },
+      {
+        "name": "title",
+        "ordinal": 2,
+        "type_info": "Text"
+      },
+      {
+        "name": "description",
+        "ordinal": 3,
+        "type_info": "Text"
+      },
+      {
+        "name": "status!: TaskStatus",
+        "ordinal": 4,
+        "type_info": "Text"
+      },
+      {
+        "name": "parent_task_attempt: Uuid",
+        "ordinal": 5,
+        "type_info": "Blob"
+      },
+      {
+        "name": "orchestrator_stage: OrchestratorStage",
+        "ordinal": 6,
+        "type_info": "Text"
+      },
+      {
+        "name": "orchestrator_context",
+        "ordinal": 7,
+        "type_info": "Text"
+      },
+      {
+        "name": "container_id: i32",
+        "ordinal": 8,
+        "type_info": "Integer"
+      },
+      {
+        "name": "created_at!: DateTime<Utc>",
+        "ordinal": 9,
+        "type_info": "Text"
+      },
+      {
+        "name": "updated_at!: DateTime<Utc>",
+        "ordinal": 10,
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": [
+      true,
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "147c1312e0f2e382b9df38a1c7a4473b1ccec7b5a79b95a6d9a7a0eaf63266f7"
+}
