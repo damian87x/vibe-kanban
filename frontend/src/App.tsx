@@ -7,6 +7,7 @@ import { TaskDetailsPage } from '@/pages/task-details';
 
 import { Settings } from '@/pages/Settings';
 import { McpServers } from '@/pages/McpServers';
+import OrchestratorPage from '@/pages/orchestrator';
 import { DisclaimerDialog } from '@/components/DisclaimerDialog';
 import { OnboardingDialog } from '@/components/OnboardingDialog';
 import { PrivacyOptInDialog } from '@/components/PrivacyOptInDialog';
@@ -187,6 +188,7 @@ function AppContent() {
 
               <Route path="/settings" element={<Settings />} />
               <Route path="/mcp-servers" element={<McpServers />} />
+              <Route path="/orchestrator" element={<OrchestratorPage />} />
             </SentryRoutes>
           </div>
         </div>

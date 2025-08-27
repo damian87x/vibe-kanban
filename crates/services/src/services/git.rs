@@ -528,15 +528,16 @@ impl GitService {
         let main_repo = self.open_repo(repo_path)?;
         let refname = format!("refs/heads/{base_branch_name}");
 
-        if let Ok(main_head) = main_repo.head()
-            && let Some(branch_name) = main_head.shorthand()
-            && branch_name == base_branch_name
-        {
-            // Only update main repo's HEAD if it's currently on the base branch
-            main_repo.set_head(&refname)?;
-            let mut co = CheckoutBuilder::new();
-            co.force();
-            main_repo.checkout_head(Some(&mut co))?;
+        if let Ok(main_head) = main_repo.head() {
+            if let Some(branch_name) = main_head.shorthand() {
+                if branch_name == base_branch_name {
+                    // Only update main repo's HEAD if it's currently on the base branch
+                    main_repo.set_head(&refname)?;
+                    let mut co = CheckoutBuilder::new();
+                    co.force();
+                    main_repo.checkout_head(Some(&mut co))?;
+                }
+            }
         }
 
         Ok(squash_commit_id.to_string())
@@ -561,13 +562,23 @@ impl GitService {
         // Check for unpushed commits by comparing with origin/branch_name
         let (remote_commits_ahead, remote_commits_behind, remote_up_to_date) = if let Some(token) =
             github_token
-            && self.fetch_from_remote(&repo, &token).is_ok()
-            && let Ok(remote_ref) =
-                repo.find_reference(&format!("refs/remotes/origin/{branch_name}"))
-            && let Some(remote_oid) = remote_ref.target()
         {
-            let (a, b) = repo.graph_ahead_behind(branch_oid, remote_oid)?;
-            (Some(a), Some(b), Some(a == 0 && b == 0))
+            if self.fetch_from_remote(&repo, &token).is_ok() {
+                if let Ok(remote_ref) =
+                    repo.find_reference(&format!("refs/remotes/origin/{branch_name}"))
+                {
+                    if let Some(remote_oid) = remote_ref.target() {
+                        let (a, b) = repo.graph_ahead_behind(branch_oid, remote_oid)?;
+                        (Some(a), Some(b), Some(a == 0 && b == 0))
+                    } else {
+                        (None, None, None)
+                    }
+                } else {
+                    (None, None, None)
+                }
+            } else {
+                (None, None, None)
+            }
         } else {
             (None, None, None)
         };
@@ -575,10 +586,14 @@ impl GitService {
         // Calculate ahead/behind counts using the stored base branch
         let (commits_ahead, commits_behind, up_to_date) = if let Ok(base_branch) =
             repo.find_branch(base_branch_name, BranchType::Local)
-            && let Some(base_oid) = base_branch.get().target()
         {
-            let (a, b) = repo.graph_ahead_behind(branch_oid, base_oid)?;
-            (Some(a), Some(b), Some(a == 0 && b == 0))
+            if let Some(base_oid) = base_branch.get().target() {
+                let (a, b) = repo.graph_ahead_behind(branch_oid, base_oid)?;
+                (Some(a), Some(b), Some(a == 0 && b == 0))
+            } else {
+                // Base branch doesn't exist, assume no relationship
+                (None, None, None)
+            }
         } else {
             // Base branch doesn't exist, assume no relationship
             (None, None, None)
@@ -632,9 +647,10 @@ impl GitService {
                         | git2::Status::WT_DELETED
                         | git2::Status::WT_RENAMED
                         | git2::Status::WT_TYPECHANGE,
-                ) && let Some(path) = entry.path()
-                {
-                    dirty_files.push(path.to_string());
+                ) {
+                    if let Some(path) = entry.path() {
+                        dirty_files.push(path.to_string());
+                    }
                 }
             }
 
@@ -663,11 +679,11 @@ impl GitService {
 
         // Helper function to get last commit date for a branch
         let get_last_commit_date = |branch: &git2::Branch| -> Result<DateTime<Utc>, git2::Error> {
-            if let Some(target) = branch.get().target()
-                && let Ok(commit) = repo.find_commit(target)
-            {
-                let timestamp = commit.time().seconds();
-                return Ok(DateTime::from_timestamp(timestamp, 0).unwrap_or_else(Utc::now));
+            if let Some(target) = branch.get().target() {
+                if let Ok(commit) = repo.find_commit(target) {
+                    let timestamp = commit.time().seconds();
+                    return Ok(DateTime::from_timestamp(timestamp, 0).unwrap_or_else(Utc::now));
+                }
             }
             Ok(Utc::now()) // Default to now if we can't get the commit date
         };

@@ -126,10 +126,10 @@ pub fn extract_unified_diff_hunks(unified_diff: &str) -> Vec<String> {
         }
     }
     // we have reached the end. flush the last hunk if it exists
-    if let Some(hunk) = current_hunk
-        && !hunk.is_empty()
-    {
-        hunks.push(hunk);
+    if let Some(hunk) = current_hunk {
+        if !hunk.is_empty() {
+            hunks.push(hunk);
+        }
     }
 
     // Fix hunk headers if they are empty @@\n

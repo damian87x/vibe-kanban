@@ -1,0 +1,52 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - generic [ref=e6]:
+    - generic [ref=e7]:
+      - img [ref=e8]
+      - generic [ref=e10]:
+        - link "Projects" [ref=e11] [cursor=pointer]:
+          - /url: /projects
+          - img [ref=e12] [cursor=pointer]
+          - text: Projects
+        - link "MCP Servers" [ref=e14] [cursor=pointer]:
+          - /url: /mcp-servers
+          - img [ref=e15] [cursor=pointer]
+          - text: MCP Servers
+        - link "Orchestrator" [ref=e18] [cursor=pointer]:
+          - /url: /orchestrator
+          - img [ref=e19] [cursor=pointer]
+          - text: Orchestrator
+        - link "Settings" [ref=e23] [cursor=pointer]:
+          - /url: /settings
+          - img [ref=e24] [cursor=pointer]
+          - text: Settings
+    - generic [ref=e27]:
+      - link "Docs" [ref=e28] [cursor=pointer]:
+        - /url: https://vibekanban.com/
+        - img [ref=e29] [cursor=pointer]
+        - text: Docs
+      - link "Support" [ref=e31] [cursor=pointer]:
+        - /url: https://github.com/BloopAI/vibe-kanban/issues
+        - img [ref=e32] [cursor=pointer]
+        - text: Support
+  - generic [ref=e36]:
+    - generic [ref=e37]:
+      - generic [ref=e38]:
+        - heading "Projects" [level=1] [ref=e39]
+        - paragraph [ref=e40]: Manage your projects and track their progress
+      - button "Create Project" [ref=e41] [cursor=pointer]:
+        - img [ref=e42] [cursor=pointer]
+        - text: Create Project
+    - alert [ref=e43]:
+      - img [ref=e44]
+      - generic [ref=e46]: Failed to fetch projects
+    - generic [ref=e48]:
+      - img [ref=e50]
+      - heading "No projects yet" [level=3] [ref=e51]
+      - paragraph [ref=e52]: Get started by creating your first project.
+      - button "Create your first project" [ref=e53] [cursor=pointer]:
+        - img [ref=e54] [cursor=pointer]
+        - text: Create your first project
+```

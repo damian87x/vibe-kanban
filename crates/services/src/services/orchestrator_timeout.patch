@@ -1,0 +1,39 @@
+// Add to execute_specification method, replace lines 303-311:
+
+        // Collect output with timeout
+        let mut stdout = String::new();
+        let timeout = Duration::from_secs(600); // 10 minute timeout
+        
+        let output_result = tokio::time::timeout(timeout, async {
+            if let Some(mut stdout_handle) = child.inner().stdout.take() {
+                stdout_handle.read_to_string(&mut stdout).await
+            } else {
+                Ok(0)
+            }
+        }).await;
+        
+        let success = match output_result {
+            Ok(Ok(_)) => {
+                // Wait for process to complete
+                match tokio::time::timeout(Duration::from_secs(30), child.wait()).await {
+                    Ok(Ok(status)) => status.success(),
+                    _ => {
+                        let _ = child.kill();
+                        false
+                    }
+                }
+            }
+            Ok(Err(e)) => {
+                error!("Failed to read output: {:?}", e);
+                let _ = child.kill();
+                false
+            }
+            Err(_) => {
+                error!("Task {} specification stage timed out after 10 minutes", task.id);
+                let _ = child.kill();
+                stdout.push_str("\n[TIMEOUT: Stage execution exceeded 10 minutes]");
+                false
+            }
+        };
+
+// Similar changes needed for execute_implementation and execute_review methods
