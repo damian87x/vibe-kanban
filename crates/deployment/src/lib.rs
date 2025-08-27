@@ -110,6 +110,18 @@ pub trait Deployment: Clone + Send + Sync + 'static {
         PrMonitorService::spawn(db, config).await
     }
 
+    async fn spawn_orchestrator_service(&self) -> tokio::task::JoinHandle<()> {
+        use services::services::orchestrator::OrchestratorService;
+        
+        let db_pool = self.db().pool.clone();
+        let orchestrator = OrchestratorService::new(db_pool);
+        
+        tokio::spawn(async move {
+            tracing::info!("Starting orchestrator service");
+            orchestrator.run_loop().await;
+        })
+    }
+
     async fn track_if_analytics_allowed(&self, event_name: &str, properties: Value) {
         if let Some(true) = self.config().read().await.analytics_enabled {
             // Does the user allow analytics?

@@ -43,6 +43,10 @@ async fn main() -> Result<(), VibeKanbanError> {
     deployment.update_sentry_scope().await?;
     deployment.cleanup_orphan_executions().await?;
     deployment.spawn_pr_monitor_service().await;
+    
+    // Start the orchestrator service
+    deployment.spawn_orchestrator_service().await;
+    
     deployment
         .track_if_analytics_allowed("session_start", serde_json::json!({}))
         .await;

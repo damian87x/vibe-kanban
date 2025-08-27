@@ -3,8 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { RefreshCw, PlayCircle, AlertCircle } from "lucide-react";
-import { apiClient } from "@/lib/api-client";
+import { RefreshCw, PlayCircle } from "lucide-react";
+import { orchestratorApi } from "@/lib/api";
 
 interface OrchestratorStatus {
   active_tasks: ActiveTask[];
@@ -47,14 +47,14 @@ export default function OrchestratorPage() {
   const [status, setStatus] = useState<OrchestratorStatus | null>(null);
   const [tasks, setTasks] = useState<OrchestratorTask[]>([]);
   const [selectedTask, setSelectedTask] = useState<OrchestratorTask | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
 
   const fetchData = async () => {
     try {
       setLoading(true);
       const [statusRes, tasksRes] = await Promise.all([
-        apiClient.get<OrchestratorStatus>("/api/orchestrator/status"),
-        apiClient.get<OrchestratorTask[]>("/api/orchestrator/tasks"),
+        orchestratorApi.getStatus(),
+        orchestratorApi.getTasks(),
       ]);
       setStatus(statusRes);
       setTasks(tasksRes);
@@ -73,7 +73,7 @@ export default function OrchestratorPage() {
 
   const handleRetry = async (taskId: string, fromStage?: string) => {
     try {
-      await apiClient.post(`/api/orchestrator/retry/${taskId}`, { from_stage: fromStage });
+      await orchestratorApi.retryTask(taskId, fromStage);
       await fetchData();
     } catch (error) {
       console.error("Failed to retry task:", error);

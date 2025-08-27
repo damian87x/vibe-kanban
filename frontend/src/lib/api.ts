@@ -616,3 +616,55 @@ export const profilesApi = {
     return handleApiResponse<string>(response);
   },
 };
+
+// Orchestrator API types
+interface OrchestratorStatus {
+  active_tasks: Array<{
+    task_id: string;
+    task_title: string;
+    stage: string;
+    container_id: number;
+    started_at: string;
+  }>;
+  queued_tasks: Array<{
+    task_id: string;
+    task_title: string;
+    created_at: string;
+  }>;
+  containers: Array<{
+    id: number;
+    allocated_to?: string;
+    status: string;
+  }>;
+}
+
+interface OrchestratorTask {
+  id: string;
+  title: string;
+  stage?: string;
+  outputs: {
+    specification?: string;
+    implementation?: string;
+    review?: string;
+  };
+}
+
+
+// Orchestrator API
+export const orchestratorApi = {
+  getStatus: async (): Promise<OrchestratorStatus> => {
+    const response = await makeRequest('/api/orchestrator/status');
+    return handleApiResponse<OrchestratorStatus>(response);
+  },
+  getTasks: async (): Promise<OrchestratorTask[]> => {
+    const response = await makeRequest('/api/orchestrator/tasks');
+    return handleApiResponse<OrchestratorTask[]>(response);
+  },
+  retryTask: async (taskId: string, fromStage?: string): Promise<void> => {
+    const response = await makeRequest(`/api/orchestrator/retry/${taskId}`, {
+      method: 'POST',
+      body: JSON.stringify({ from_stage: fromStage }),
+    });
+    return handleApiResponse<void>(response);
+  },
+};
