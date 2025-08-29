@@ -11,15 +11,15 @@ use rust_embed::RustEmbed;
 pub struct Assets;
 
 pub async fn serve_frontend(uri: axum::extract::Path<String>) -> impl IntoResponse {
-    let path = uri.trim_start_matches('/');
-    serve_file(path).await
+    let path = uri.trim_start_matches('/').to_string();
+    serve_file(&path).await
 }
 
 pub async fn serve_frontend_root() -> impl IntoResponse {
     serve_file("index.html").await
 }
 
-async fn serve_file(path: &str) -> impl IntoResponse {
+async fn serve_file(path: &str) -> impl IntoResponse + use<> {
     let file = Assets::get(path);
 
     match file {
