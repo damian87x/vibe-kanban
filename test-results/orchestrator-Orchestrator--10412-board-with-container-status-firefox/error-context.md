@@ -1,0 +1,55 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e3]:
+  - generic [ref=e6]:
+    - generic [ref=e7]:
+      - img [ref=e8]
+      - generic [ref=e10]:
+        - link "Projects" [ref=e11] [cursor=pointer]:
+          - /url: /projects
+          - img [ref=e12] [cursor=pointer]
+          - text: Projects
+        - link "MCP Servers" [ref=e14] [cursor=pointer]:
+          - /url: /mcp-servers
+          - img [ref=e15] [cursor=pointer]
+          - text: MCP Servers
+        - link "Orchestrator" [active] [ref=e20] [cursor=pointer]:
+          - /url: /orchestrator
+          - img [ref=e21] [cursor=pointer]
+          - text: Orchestrator
+        - link "Settings" [ref=e25] [cursor=pointer]:
+          - /url: /settings
+          - img [ref=e26] [cursor=pointer]
+          - text: Settings
+    - generic [ref=e29]:
+      - link "Docs" [ref=e30] [cursor=pointer]:
+        - /url: https://vibekanban.com/
+        - img [ref=e31] [cursor=pointer]
+        - text: Docs
+      - link "Support" [ref=e34] [cursor=pointer]:
+        - /url: https://github.com/BloopAI/vibe-kanban/issues
+        - img [ref=e35] [cursor=pointer]
+        - text: Support
+  - generic [ref=e40]:
+    - generic [ref=e41]:
+      - heading "Orchestrator Dashboard" [level=1] [ref=e42]
+      - paragraph [ref=e43]: Monitor and manage task orchestration through specification, implementation, and QA stages
+    - generic [ref=e44]:
+      - generic [ref=e46]:
+        - generic [ref=e47]: Containers
+        - generic [ref=e48]: Execution container allocation
+      - generic [ref=e51]:
+        - generic [ref=e52]: Active Tasks
+        - generic [ref=e53]: 0 running
+      - generic [ref=e56]:
+        - generic [ref=e57]: Queued Tasks
+        - generic [ref=e58]: 0 waiting
+    - generic [ref=e62]:
+      - generic [ref=e63]:
+        - generic [ref=e64]: Task Progress
+        - generic [ref=e65]: View task progression through orchestration stages
+      - button "Refresh" [ref=e66] [cursor=pointer]:
+        - img [ref=e67] [cursor=pointer]
+        - text: Refresh
+```

@@ -172,11 +172,11 @@ impl Opencode {
                     entry,
                 );
                 msg_store.push_patch(patch);
-            } else if !session_id_extracted
-                && let Some(session_id) = LogUtils::parse_session_id_from_line(&line)
-            {
-                msg_store.push_session_id(session_id);
-                session_id_extracted = true;
+            } else if !session_id_extracted {
+                if let Some(session_id) = LogUtils::parse_session_id_from_line(&line) {
+                    msg_store.push_session_id(session_id);
+                    session_id_extracted = true;
+                }
             }
         }
     }
@@ -539,23 +539,23 @@ impl ToolCall {
         let rest = content.get(raw_tool.len()..).unwrap_or("").trim_start();
 
         // JSON tool arguments
-        if rest.starts_with('{')
-            && let Ok(arguments) = serde_json::from_str::<serde_json::Value>(rest)
-        {
+        if rest.starts_with('{') {
+            if let Ok(arguments) = serde_json::from_str::<serde_json::Value>(rest) {
             let tool_json = serde_json::json!({
                 "tool_name": tool_name,
                 "arguments": arguments
             });
 
-            return match serde_json::from_value::<Tool>(tool_json) {
-                Ok(tool) => Some(ToolCall { tool }),
-                Err(_) => Some(ToolCall {
-                    tool: Tool::Other {
-                        tool_name,
-                        arguments,
-                    },
-                }),
-            };
+                return match serde_json::from_value::<Tool>(tool_json) {
+                    Ok(tool) => Some(ToolCall { tool }),
+                    Err(_) => Some(ToolCall {
+                        tool: Tool::Other {
+                            tool_name,
+                            arguments,
+                        },
+                    }),
+                };
+            }
         }
 
         // Simplified tool argument summary
@@ -904,10 +904,10 @@ impl LogUtils {
         }
 
         // Try regex for session ID extraction from service=session logs
-        if let Some(captures) = SESSION_ID_REGEX.captures(line)
-            && let Some(id) = captures.get(2)
-        {
-            return Some(id.as_str().to_string());
+        if let Some(captures) = SESSION_ID_REGEX.captures(line) {
+            if let Some(id) = captures.get(2) {
+                return Some(id.as_str().to_string());
+            }
         }
 
         None

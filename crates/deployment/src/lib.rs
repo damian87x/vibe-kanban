@@ -110,6 +110,18 @@ pub trait Deployment: Clone + Send + Sync + 'static {
         PrMonitorService::spawn(db, config).await
     }
 
+    async fn spawn_orchestrator_service(&self) -> tokio::task::JoinHandle<()> {
+        use services::services::orchestrator::OrchestratorService;
+        
+        let db_pool = self.db().pool.clone();
+        let orchestrator = OrchestratorService::new(db_pool);
+        
+        tokio::spawn(async move {
+            tracing::info!("Starting orchestrator service");
+            orchestrator.run_loop().await;
+        })
+    }
+
     async fn track_if_analytics_allowed(&self, event_name: &str, properties: Value) {
         if let Some(true) = self.config().read().await.analytics_enabled {
             // Does the user allow analytics?
@@ -153,16 +165,21 @@ pub trait Deployment: Clone + Send + Sync + 'static {
                 ExecutionProcessRunReason::CodingAgent
                     | ExecutionProcessRunReason::SetupScript
                     | ExecutionProcessRunReason::CleanupScript
-            ) && let Ok(Some(task_attempt)) =
-                TaskAttempt::find_by_id(&self.db().pool, process.task_attempt_id).await
-                && let Ok(Some(task)) = task_attempt.parent_task(&self.db().pool).await
-                && let Err(e) =
-                    Task::update_status(&self.db().pool, task.id, TaskStatus::InReview).await
-            {
-                tracing::error!(
-                    "Failed to update task status to InReview for orphaned attempt: {}",
-                    e
-                );
+            ) {
+                if let Ok(Some(task_attempt)) =
+                    TaskAttempt::find_by_id(&self.db().pool, process.task_attempt_id).await
+                {
+                    if let Ok(Some(task)) = task_attempt.parent_task(&self.db().pool).await {
+                        if let Err(e) =
+                            Task::update_status(&self.db().pool, task.id, TaskStatus::InReview).await
+                        {
+                            tracing::error!(
+                                "Failed to update task status to InReview for orphaned attempt: {}",
+                                e
+                            );
+                        }
+                    }
+                }
             }
         }
         Ok(())
